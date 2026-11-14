@@ -312,22 +312,34 @@ def extract_page(page: fitz.Page, page_num: int = 1) -> tuple[str, int, int]:
 
     # Detect tables; collect markdown representations and exclusion rects so
     # that raw cell text is not also emitted as plain text blocks.
-    found_tables = page.find_tables()
-    table_items = []
-    table_rects = []
-    for t in found_tables:
-        table_items.append((t.bbox[1], 1, "[TABLE]"))
-        table_rects.append(fitz.Rect(t.bbox))
-
     # FreeText annotations (type 2) render their content as visible page text,
     # so pymupdf returns it in get_text("dict") too. Collect their rects first
     # so we can skip the duplicate plain-text blocks below.
     freetext_rects = [annot.rect for annot in page.annots() if annot.type[0] == 2]
 
-    excluded_rects = freetext_rects + table_rects
+    # find_tables() mistakes the bordered FreeText boxes for table cells, so a
+    # "table" touching a note is an artefact; excluding it would drop body text.
+    found_tables = page.find_tables()
+    table_items = []
+    table_rects = []
+    for t in found_tables:
+        rect = fitz.Rect(t.bbox)
+        if any(rect.intersects(r) for r in freetext_rects):
+            continue
+        table_items.append((t.bbox[1], 1, "[TABLE]"))
+        table_rects.append(rect)
+
+    def _mostly_inside(block_rect: fitz.Rect, r: fitz.Rect) -> bool:
+        inter = block_rect & r
+        if inter.is_empty or block_rect.is_empty:
+            return False
+        return inter.get_area() > 0.5 * block_rect.get_area()
 
     def overlaps_excluded(block_rect: fitz.Rect) -> bool:
-        return any(block_rect.intersects(r) for r in excluded_rects)
+        # Note text lies inside its box; body text merely overlapped by a note is kept.
+        if any(_mostly_inside(block_rect, r) for r in freetext_rects):
+            return True
+        return any(block_rect.intersects(r) for r in table_rects)
 
     dict_blocks = page.get_text("dict")["blocks"]
     body_size = _page_body_size(dict_blocks)

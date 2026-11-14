@@ -15,6 +15,7 @@ dependencies = [
 extract = "src.extract:main"
 summarise = "src.summarise:main"
 pipeline = "src.pipeline:main"
+review = "src.review:main"
 
 [build-system]
 requires = ["hatchling"]

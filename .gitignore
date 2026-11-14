@@ -18,6 +18,7 @@ outputs/
 extracted/
 summaries/
 papers/
+reviews/
 
 # Secrets
 .env
