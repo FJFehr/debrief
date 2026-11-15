@@ -1,143 +1,61 @@
-"""Extract highlights and margin notes from an annotated PDF.
+"""Extract an annotated PDF into Markdown with highlights and notes in place.
 
 Usage:
-    python src/extract.py "papers/foo.pdf" [--url <paper_url>]
+    uv run extract papers/foo.pdf [--full]
 
-Writes: outputs/extracted/foo.txt
-If --url is provided, fetches BibTeX and prepends to output.
+Writes: outputs/extracted/foo.md and outputs/extracted/foo.annotations.json
+
+Works on single- and two-column papers, and on review copies with margin line
+numbers (ACL/ARR), whose numbers are stripped from the text and reported as
+line references. Annotations from Preview and Okular are both read.
 """
 
+from __future__ import annotations
+
 import argparse
+import json
 import re
 import sys
+from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 
-import fitz  # pymupdf
-from src.get_bibtex import get_bibtex_from_url
+import pymupdf
 
+from src.annotations import Annotation, assign_ids, mark_words, read_annotations
+from src.floats import CAPTION_RE, Float, detect_floats, lines_of, text_lines
+from src.layout import (
+    Block,
+    Line,
+    PageLayout,
+    build_vocab,
+    merge_row_fragments,
+    parse_page,
+    reading_order,
+)
+from src.render import (
+    annotations_records,
+    annotations_table,
+    flow,
+    line_range,
+    note_tag,
+    plain_text,
+)
+
+pymupdf.TOOLS.mupdf_display_errors(False)  # malformed-object chatter from figures
 
 # ---------------------------------------------------------------------------
-# Structural heading regexes
+# Structural regexes
 # ---------------------------------------------------------------------------
 
-_SECTION_HEADING_RE = re.compile(
-    r"^\d+\.?\s+\w|"
+_NUMBERED_HEADING_RE = re.compile(r"^((?:\d+|[A-Z])(?:\.\d+)*)\.?\s+\S")
+_NAMED_HEADING_RE = re.compile(
     r"^(?:Abstract|Introduction|Related Work|Background|Method(?:ology)?|"
-    r"Experiment(?:s|al Setup)?|Results?|Discussion|Conclusion|"
-    r"Limitations?|Ethical|Acknowledgements?|Appendix)\b",
+    r"Experiment(?:s|al Setup)?|Results?|Discussion|Conclusions?|"
+    r"Limitations?|Ethic\w*|Acknowledge?ments?|Appendix|References|Bibliography)\b",
     re.IGNORECASE,
 )
-
-_SUBSECTION_HEADING_RE = re.compile(r"^\d+\.\d+")
-
-
-# ---------------------------------------------------------------------------
-# Colour mapping
-# ---------------------------------------------------------------------------
-
-
-def rgb_to_colour(rgb: tuple | None) -> str:
-    """Map an RGB float tuple (0–1 each) to a human-readable colour name."""
-    if rgb is None:
-        return "yellow"
-    r, g, b = rgb
-    if r > 0.8 and b < 0.3:
-        if g > 0.7:
-            return "yellow"
-        if g > 0.3:
-            return "orange"
-    if r < 0.35 and g > 0.55 and b < 0.35:
-        return "green"
-    if r > 0.65 and g < 0.35 and b < 0.35:
-        return "red"
-    if r < 0.35 and g < 0.35 and b > 0.55:
-        return "blue"
-    if r > 0.55 and g < 0.35 and b > 0.55:
-        return "purple"
-    if r > 0.7 and g < 0.55 and b > 0.45:
-        return "pink"
-    return "yellow"  # default for ambiguous colours
-
-
-# ---------------------------------------------------------------------------
-# References / appendix post-processing
-# ---------------------------------------------------------------------------
-
-# Matches a "References" section heading on its own line (common in ACL/NeurIPS papers)
-_REFERENCES_RE = re.compile(
-    r"^(?:References|REFERENCES|Bibliography)\s*$", re.MULTILINE
-)
-
-# Matches the first line of an appendix: "Appendix", "A.", "A.1", "B.1", etc.
-_APPENDIX_RE = re.compile(r"^(?:Appendix\b|[A-Z]\.\d)", re.MULTILINE)
-
-
-def _filter_appendix_sections(appendix_text: str) -> str:
-    """Keep only appendix subsections that contain at least one annotation.
-
-    Splits the appendix text on [SECTION: ...] / [SUBSECTION: ...] header
-    lines and returns only the chunks that contain a [HIGHLIGHT ...] or
-    [NOTE ...] marker. Any text before the first header is treated as a
-    preamble chunk and subject to the same filter.
-
-    Returns the filtered text joined by double newlines, or empty string if
-    no chunks pass the filter.
-    """
-    parts = re.split(
-        r"(^\[(?:SECTION|SUBSECTION):[^\n]*|^[A-Z](?:\.\d+)*\s*$)",
-        appendix_text,
-        flags=re.MULTILINE,
-    )
-
-    chunks: list[str] = []
-    if parts[0].strip():
-        chunks.append(parts[0])
-
-    i = 1
-    while i < len(parts):
-        header = parts[i]
-        content = parts[i + 1] if i + 1 < len(parts) else ""
-        chunks.append(header + content)
-        i += 2
-
-    kept = [c for c in chunks if re.search(r"\[(HIGHLIGHT|NOTE)\b", c)]
-    return "\n\n".join(kept)
-
-
-def _process_references_and_appendix(text: str) -> str:
-    """Remove the references section and insert an --- Appendix --- marker.
-
-    Finds the first standalone 'References' heading, drops everything from
-    that point to the start of the appendix (or end of document), and inserts
-    '--- Appendix ---' before the appendix content if one is found.
-
-    Only appendix subsections that contain at least one annotation are kept;
-    unannotated subsections are dropped silently. If no subsections survive,
-    the appendix marker is omitted entirely.
-
-    Note: in two-column PDFs, a few reference entries may appear interleaved
-    with the final body-text sections before the heading — those are left as-is
-    since they cannot be distinguished from body text without ML-level parsing.
-    """
-    ref_m = _REFERENCES_RE.search(text)
-    if not ref_m:
-        return text
-
-    before_refs = text[: ref_m.start()].rstrip()
-
-    appendix_m = _APPENDIX_RE.search(text, ref_m.end())
-    if appendix_m:
-        filtered = _filter_appendix_sections(text[appendix_m.start() :])
-        if filtered:
-            return before_refs + "\n\n--- Appendix ---\n\n" + filtered
-        return before_refs
-    else:
-        return before_refs
-
-
-# ---------------------------------------------------------------------------
-# Math / equation detection
-# ---------------------------------------------------------------------------
+_REFERENCES_RE = re.compile(r"^(?:References|Bibliography)\s*$", re.IGNORECASE)
 
 MATH_SYMBOLS = set("∈≤≥≠×∑∏∫πθφσλρεϕ→←∇∂≈")
 
@@ -155,375 +73,506 @@ def is_display_equation(text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Figure caption detection
-# ---------------------------------------------------------------------------
-
-FIGURE_CAPTION_RE = re.compile(r"^(Figure\s+\d+)[:\.](.+)", re.DOTALL | re.IGNORECASE)
-
-_TABLE_CAPTION_RE = re.compile(r"^Table\s+\d+[:\.]")
-_CAPTION_ITEM_RE = re.compile(r"^(\[FIGURE \d+:|Table\s+\d+[:\.])")
-_SKIP_ITEM_RE = re.compile(r"^\[(HIGHLIGHT|NOTE|TABLE|EQUATION|FIGURE)\b")
-_STOP_MARKER_RE = re.compile(r"^\[(SECTION|SUBSECTION|TITLE|AUTHORS):")
-
-
-def _suppress_pre_caption_labels(
-    items: list[tuple[float, int, str]],
-) -> list[tuple[float, int, str]]:
-    """Suppress short text blocks that precede figure/table captions.
-
-    After items are y-sorted, walk backward from each figure caption
-    ([FIGURE N: "..."]) or table caption (Table N: ...) and suppress
-    plain-text items with fewer than 8 words (figure labels / table cells).
-
-    Stops scanning at:
-    - a long plain-text item (≥ 8 words)  — body paragraph
-    - a section/subsection/title/authors marker
-    - another caption item
-    - the start of the list
-
-    Annotations ([HIGHLIGHT], [NOTE]) and markers ([TABLE], [EQUATION],
-    [FIGURE]) are kept regardless.
-    """
-    suppress: set[int] = set()
-
-    for i, (_, _, text) in enumerate(items):
-        if not _CAPTION_ITEM_RE.match(text):
-            continue
-        j = i - 1
-        while j >= 0:
-            prev_text = items[j][2]
-            if _STOP_MARKER_RE.match(prev_text):
-                break
-            if _CAPTION_ITEM_RE.match(prev_text):
-                break
-            if _SKIP_ITEM_RE.match(prev_text):
-                j -= 1
-                continue
-            if len(prev_text.split()) >= 8:
-                break
-            suppress.add(j)
-            j -= 1
-
-    return [(y, p, t) for i, (y, p, t) in enumerate(items) if i not in suppress]
-
-
-def format_figure_caption(text: str) -> str | None:
-    """If text is a figure caption, return a [FIGURE N: "..."] marker, else None."""
-    m = FIGURE_CAPTION_RE.match(text.strip())
-    if m:
-        label = m.group(1).strip()
-        caption = m.group(2).strip()
-        caption = re.sub(r"\s+", " ", caption)
-        return f'[{label.upper()}: "{caption}"]'
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Dict-format block helpers
+# Document model
 # ---------------------------------------------------------------------------
 
 
-def _block_text(block: dict) -> str:
-    """Join span texts from a dict-format block, merging sub/superscript lines inline.
+@dataclass
+class Element:
+    """One unit of output: a heading, paragraph, figure placeholder, …"""
 
-    A line whose every non-empty span is smaller than 75% of the block dominant size
-    is treated as a subscript/superscript line and appended inline to the preceding
-    logical line rather than starting a new one.
-    """
-    dominant = _block_dominant_size(block)
-    sub_threshold = dominant * 0.75
+    kind: str  # page | title | authors | heading | para | equation | footnote | figure | table | box
+    page: int
+    lines: list[Line] = field(default_factory=list)
+    level: int = 0
+    fl: Float | None = None
+    notes: dict[int, list[Annotation]] = field(default_factory=dict)  # after line i
+    after: list[Annotation] = field(default_factory=list)  # after the whole element
+    x0: float = 0.0
+    y0: float = 0.0
+    x1: float = 0.0
+    y1: float = 0.0
+    col: str = "full"
 
-    logical_lines: list[str] = []
-    for line in block["lines"]:
-        line_text = "".join(s["text"] for s in line["spans"])
-        nonempty_sizes = [s["size"] for s in line["spans"] if s["text"].strip()]
-        is_sub_super = bool(nonempty_sizes) and all(
-            sz < sub_threshold for sz in nonempty_sizes
-        )
-        if is_sub_super and logical_lines:
-            logical_lines[-1] += line_text  # attach subscript/superscript inline
-        else:
-            logical_lines.append(line_text)
+    @property
+    def text(self) -> str:
+        return " ".join(ln.text for ln in self.lines)
 
-    return "\n".join(logical_lines).strip()
+    def all_lines(self) -> list[Line]:
+        if self.fl is None:
+            return self.lines
+        cap = self.fl.caption.lines if self.fl.caption else []
+        return cap + lines_of(self.fl.inner)
 
-
-def _block_dominant_size(block: dict) -> float:
-    """Most common font size in the block, weighted by character count."""
-    sizes: list[float] = []
-    for line in block["lines"]:
-        for span in line["spans"]:
-            sizes.extend([round(span["size"], 1)] * max(1, len(span["text"])))
-    return max(set(sizes), key=sizes.count) if sizes else 0.0
-
-
-def _block_is_bold(block: dict) -> bool:
-    """True if the majority of characters in the block are bold (flag bit 4)."""
-    bold, total = 0, 0
-    for line in block["lines"]:
-        for span in line["spans"]:
-            n = len(span["text"])
-            total += n
-            if span["flags"] & 16:
-                bold += n
-    return bold > total / 2 if total else False
-
-
-def _page_body_size(dict_blocks: list[dict]) -> float:
-    """Return the most common font size on the page (body text baseline)."""
-    sizes: list[float] = []
-    for block in dict_blocks:
-        if block["type"] != 0:
-            continue
-        for line in block["lines"]:
-            for span in line["spans"]:
-                if len(span["text"].strip()) > 2:
-                    sizes.append(round(span["size"], 1))
-    return max(set(sizes), key=sizes.count) if sizes else 11.0
-
-
-# ---------------------------------------------------------------------------
-# Spatial helpers
-# ---------------------------------------------------------------------------
-
-
-def note_position(rect: fitz.Rect, page_width: float) -> str:
-    """Classify a note's horizontal position as left, right, or inline."""
-    if rect.x0 < page_width * 0.35:
-        return "left"
-    if rect.x0 > page_width * 0.65:
-        return "right"
-    return "inline"
-
-
-# ---------------------------------------------------------------------------
-# Per-page extraction
-# ---------------------------------------------------------------------------
-
-
-def extract_page(page: fitz.Page, page_num: int = 1) -> tuple[str, int, int]:
-    """Extract text with annotations interleaved for a single page.
-
-    Returns (annotated_text, highlight_count, note_count).
-    """
-    page_width = page.rect.width
-    items: list[tuple[float, int, str]] = []  # (y, priority, content)
-    # priority: 0 = text block, 1 = annotation (breaks y ties so text comes first)
-
-    # Detect tables; collect markdown representations and exclusion rects so
-    # that raw cell text is not also emitted as plain text blocks.
-    # FreeText annotations (type 2) render their content as visible page text,
-    # so pymupdf returns it in get_text("dict") too. Collect their rects first
-    # so we can skip the duplicate plain-text blocks below.
-    freetext_rects = [annot.rect for annot in page.annots() if annot.type[0] == 2]
-
-    # find_tables() mistakes the bordered FreeText boxes for table cells, so a
-    # "table" touching a note is an artefact; excluding it would drop body text.
-    found_tables = page.find_tables()
-    table_items = []
-    table_rects = []
-    for t in found_tables:
-        rect = fitz.Rect(t.bbox)
-        if any(rect.intersects(r) for r in freetext_rects):
-            continue
-        table_items.append((t.bbox[1], 1, "[TABLE]"))
-        table_rects.append(rect)
-
-    def _mostly_inside(block_rect: fitz.Rect, r: fitz.Rect) -> bool:
-        inter = block_rect & r
-        if inter.is_empty or block_rect.is_empty:
-            return False
-        return inter.get_area() > 0.5 * block_rect.get_area()
-
-    def overlaps_excluded(block_rect: fitz.Rect) -> bool:
-        # Note text lies inside its box; body text merely overlapped by a note is kept.
-        if any(_mostly_inside(block_rect, r) for r in freetext_rects):
+    def is_annotated(self) -> bool:
+        if self.notes or self.after:
             return True
-        return any(block_rect.intersects(r) for r in table_rects)
+        return any(w.anns for ln in self.all_lines() for w in ln.words)
 
-    dict_blocks = page.get_text("dict")["blocks"]
-    body_size = _page_body_size(dict_blocks)
 
-    title_found = False
-    in_author_region = False
-    author_parts: list[tuple[float, str]] = []
+@dataclass
+class Context:
+    body_size: float
+    vocab: set[str]
+    anns: dict[int, Annotation] = field(default_factory=dict)
+    skipped: Counter = field(default_factory=Counter)
+    seen_heading: bool = False
 
-    for block in dict_blocks:
-        if block["type"] != 0:  # skip non-text blocks (images, etc.)
+
+def _doc_context(layouts: list[PageLayout]) -> Context:
+    sizes: dict[float, int] = {}
+    words: list[str] = []
+    for layout in layouts:
+        for block in layout.blocks:
+            broken = False  # previous line ended in a hyphen
+            for ln in block.lines:
+                sizes[ln.size] = sizes.get(ln.size, 0) + len(ln.text)
+                texts = [w.text for w in ln.words]
+                ends_broken = bool(texts) and texts[-1].endswith("-")
+                # Halves of words split across lines are not vocabulary.
+                words.extend(texts[(1 if broken else 0) : (-1 if ends_broken else None)])
+                broken = ends_broken
+    body = max(sizes, key=sizes.get) if sizes else 11.0
+    return Context(body_size=body, vocab=build_vocab(words))
+
+
+# ---------------------------------------------------------------------------
+# Page -> elements
+# ---------------------------------------------------------------------------
+
+
+def _heading_level(block: Block, body_size: float) -> int:
+    """Markdown heading level for a block, or 0 if it is not a heading."""
+    text = block.text.strip()
+    if not block.bold or len(block.lines) > 3 or len(text) >= 120:
+        return 0
+    m = _NUMBERED_HEADING_RE.match(text)
+    if m and not text.endswith("."):
+        return min(2 + m.group(1).count("."), 4)
+    if _NAMED_HEADING_RE.match(text) and block.size >= body_size * 1.05:
+        return 2
+    return 0
+
+
+def _continues(before: list[Line], after: list[Line]) -> bool:
+    """True if `after` carries on the sentence that `before` leaves unfinished."""
+    last, first = before[-1].text.strip(), after[0].text.strip()
+    return bool(last and first) and last[-1] not in ".?!:" and first[0].islower()
+
+
+def _element(kind: str, page: int, item, **kw) -> Element:
+    return Element(
+        kind=kind, page=page, x0=item.x0, y0=item.y0, x1=item.x1, y1=item.y1, col=item.col, **kw
+    )
+
+
+def _mostly_inside(block_rect: pymupdf.Rect, r: pymupdf.Rect) -> bool:
+    inter = block_rect & r
+    if inter.is_empty or block_rect.is_empty:
+        return False
+    return inter.get_area() > 0.5 * block_rect.get_area()
+
+
+def build_page(page: pymupdf.Page, layout: PageLayout, page_num: int, ctx: Context) -> list[Element]:
+    width, height = layout.width, layout.height
+    anns, skipped = read_annotations(page, page_num, next_uid=len(ctx.anns))
+    ctx.skipped.update(skipped)
+    ctx.anns.update({a.uid: a for a in anns})
+
+    # Free-text boxes can come back as page text as well; drop that copy. Note
+    # text lies inside its box; body text merely overlapped by a note is kept.
+    all_annots = list(page.annots() or [])
+    freetext = [pymupdf.Rect(a.rect) for a in all_annots if a.type[0] == 2]
+    blocks = [
+        b
+        for b in layout.blocks
+        if not any(_mostly_inside(pymupdf.Rect(b.x0, b.y0, b.x1, b.y1), r) for r in freetext)
+    ]
+    mark_words([w for b in blocks for w in b.words], anns)
+
+    ann_rects = [pymupdf.Rect(a.rect) for a in all_annots]
+    floats, body = detect_floats(page, blocks, ann_rects, ctx.body_size, layout.has_linenos)
+    body = merge_row_fragments(body)
+
+    elements: list[Element] = [Element(kind="page", page=page_num, level=page_num)]
+    title: Element | None = None
+    authors: Element | None = None
+
+    for item in reading_order(body + floats, width):
+        if isinstance(item, Float):
+            elements.append(_element(item.kind, page_num, item, fl=item))
             continue
-        text = _block_text(block)
-        if not text:
-            continue
-        block_rect = fitz.Rect(block["bbox"])
-        if overlaps_excluded(block_rect):
-            continue  # skip FreeText duplicates and table cell text
-
-        y0 = block["bbox"][1]
-        size = _block_dominant_size(block)
-        bold = _block_is_bold(block)
-
-        # ── Title (first page, largest font, once only) ───────────────────
-        if page_num == 1 and not title_found and size >= body_size * 1.2:
-            clean = re.sub(r"\s+", " ", text).strip()
-            items.append((y0, 0, f'[TITLE: "{clean}"]'))
-            title_found = True
-            in_author_region = True
-            continue
-
-        # ── Author region (page 1, between title and first section) ───────
-        if page_num == 1 and in_author_region:
-            is_section = (
-                bold
-                and size >= body_size * 1.05
-                and _SECTION_HEADING_RE.match(text.strip())
-            )
-            if is_section:
-                if author_parts:
-                    author_text = " ".join(t for _, t in sorted(author_parts))
-                    author_text = re.sub(r"\s+", " ", author_text)
-                    # Strip superscript markers (digits, *, †) after each author name
-                    author_text = re.sub(
-                        r"(?<=[A-Za-z])[\d∗†]+(,\d+[\d∗†]*)*", "", author_text
-                    )
-                    y_auth = author_parts[0][0]
-                    items.append((y_auth, 0, f'[AUTHORS: "{author_text}"]'))
-                in_author_region = False
-                # Fall through to emit this block as a section heading ↓
-            else:
-                author_parts.append((y0, text))
+        level = _heading_level(item, ctx.body_size)
+        if page_num == 1 and not ctx.seen_heading and not level:
+            if item.size >= ctx.body_size * 1.2:
+                if title is None:
+                    title = _element("title", page_num, item)
+                    elements.append(title)
+                title.lines.extend(item.lines)
                 continue
-
-        # ── Section heading ───────────────────────────────────────────────
-        if (
-            bold
-            and size >= body_size * 1.05
-            and _SECTION_HEADING_RE.match(text.strip())
-            and len(text) < 100
+            if title is not None:
+                if authors is None:
+                    authors = _element("authors", page_num, item)
+                    elements.append(authors)
+                authors.lines.extend(item.lines)
+                continue
+        if level:
+            ctx.seen_heading = True
+            elements.append(_element("heading", page_num, item, lines=item.lines, level=level))
+        elif (
+            item.size < 0.87 * ctx.body_size
+            and item.y0 > 0.5 * height
+            and not item.has_lineno
         ):
-            clean = re.sub(r"\s+", " ", text).strip()
-            items.append((y0, 0, f'[SECTION: "{clean}"]'))
-            continue
-
-        # ── Subsection heading ────────────────────────────────────────────
-        if bold and _SUBSECTION_HEADING_RE.match(text.strip()) and len(text) < 100:
-            clean = re.sub(r"\s+", " ", text).strip()
-            items.append((y0, 0, f'[SUBSECTION: "{clean}"]'))
-            continue
-
-        # ── Figure caption / equation / plain text ────────────────────────
-        figure = format_figure_caption(text)
-        if figure:
-            items.append((y0, 0, figure))
-        elif is_display_equation(text):
-            items.append((y0, 0, "[EQUATION]"))
+            elements.append(_element("footnote", page_num, item, lines=item.lines))
+        elif len(item.lines) <= 4 and is_display_equation(item.text):
+            elements.append(_element("equation", page_num, item, lines=item.lines))
         else:
-            items.append((y0, 0, text))
-
-    items.extend(table_items)
-
-    n_highlights = 0
-    n_notes = 0
-
-    for i, annot in enumerate(page.annots()):
-        atype = annot.type[0]
-        try:
-            if atype == 8:  # Highlight
-                colours = annot.colors
-                rgb = colours.get("stroke") or colours.get("fill")
-                colour = rgb_to_colour(rgb)
-                highlighted = page.get_textbox(annot.rect).strip()
-                # Collapse internal whitespace/newlines to a single space
-                highlighted = re.sub(r"\s+", " ", highlighted)
-                if not highlighted:
-                    print(
-                        f"  WARNING: empty highlight text — page annotation index {i}",
-                        file=sys.stderr,
-                    )
-                    continue
-                items.append(
-                    (annot.rect.y0, 1, f'[HIGHLIGHT {colour}: "{highlighted}"]')
-                )
-                n_highlights += 1
-
-            elif atype in (0, 2):  # Text note (popup) or FreeText annotation
-                content = annot.info.get("content", "").strip()
-                if not content:
-                    print(
-                        f"  WARNING: empty note text — page annotation index {i}",
-                        file=sys.stderr,
-                    )
-                    continue
-                position = note_position(annot.rect, page_width)
-                items.append((annot.rect.y0, 1, f'[NOTE {position}: "{content}"]'))
-                n_notes += 1
-
+            prev = elements[-1]
+            if prev.kind == "para" and prev.col != item.col and _continues(prev.lines, item.lines):
+                prev.lines = prev.lines + item.lines  # column break inside a paragraph
             else:
-                print(
-                    f"  WARNING: unclassified annotation type {atype} — page annotation index {i}",
-                    file=sys.stderr,
-                )
+                elements.append(_element("para", page_num, item, lines=item.lines))
 
-        except Exception as exc:
-            print(
-                f"  WARNING: failed to extract annotation index {i} (type {atype}): {exc}",
-                file=sys.stderr,
-            )
+    elements = _group_equations(elements, review=layout.has_linenos)
 
-    items.sort(key=lambda x: (x[0], x[1]))
-    items = _suppress_pre_caption_labels(items)
-    return "\n".join(item[2] for item in items), n_highlights, n_notes
+    for el in elements:
+        for ln in el.all_lines():
+            for w in ln.words:
+                if w.lineno is not None:
+                    for uid in w.anns:
+                        ctx.anns[uid].linenos.append(w.lineno)
 
-
-# ---------------------------------------------------------------------------
-# Main extraction loop
-# ---------------------------------------------------------------------------
+    _anchor_notes(elements, [a for a in anns if not a.is_markup], width)
+    return elements
 
 
-def extract(pdf_path: Path, out_path: Path) -> tuple[int, int, int]:
-    """Extract annotations from pdf_path and write to out_path.
+_EQ_NUM_RE = re.compile(r"\((\d+)\)\s*$")
 
-    Returns (page_count, total_highlights, total_notes).
+
+def _group_equations(elements: list[Element], review: bool) -> list[Element]:
+    """Collect the pieces of each display equation into one equation element.
+
+    A multi-line equation arrives as several blocks, some of them looking like
+    short paragraphs. In a review copy the ruler helps: display maths is mostly
+    left unnumbered, so a short unnumbered body block is part of an equation.
     """
-    doc = fitz.open(pdf_path)
-    total_highlights = 0
-    total_notes = 0
-    parts: list[str] = []
+    if review:
+        for el in elements:
+            unnumbered = not any(ln.lineno for ln in el.lines)
+            if el.kind == "para" and unnumbered and len(el.lines) <= 4 and len(el.text) <= 200:
+                el.kind = "equation"
 
-    for page_num, page in enumerate(doc, start=1):
-        parts.append(f"--- Page {page_num} ---")
-        page_text, n_h, n_n = extract_page(page, page_num)
-        if page_text:
-            parts.append(page_text)
-        total_highlights += n_h
-        total_notes += n_n
+    # A short numbered row ending in "(8)" next to equation pieces belongs to them.
+    for i, el in enumerate(elements):
+        near = [elements[j].kind for j in (i - 1, i + 1) if 0 <= j < len(elements)]
+        if (
+            el.kind == "para"
+            and len(el.lines) <= 2
+            and len(el.text) < 120
+            and _EQ_NUM_RE.search(el.lines[-1].text)
+            and ("equation" in near or "=" in el.text)
+        ):
+            el.kind = "equation"
 
+    out: list[Element] = []
+    for el in elements:
+        prev = out[-1] if out else None
+        if prev is not None and prev.kind == "equation" and prev.col == el.col:
+            # The "(7)" label can come back as the first line of the next paragraph.
+            if el.kind == "para" and len(el.lines) > 1 and re.fullmatch(r"\(\d+\)", el.lines[0].text.strip()):
+                prev.lines = prev.lines + [el.lines[0]]
+                el.lines = el.lines[1:]
+            elif el.kind == "equation" and el.y0 - prev.y1 < 20:
+                prev.lines = prev.lines + el.lines
+                prev.y1 = max(prev.y1, el.y1)
+                continue
+        out.append(el)
+    return out
+
+
+def _anchor_notes(elements: list[Element], notes: list[Annotation], width: float) -> None:
+    """Attach each point annotation to the nearest line or float on its side of the page."""
+    targets: list[tuple[Element, int | None, float, float, str]] = []
+    for el in elements:
+        if el.fl is not None:
+            targets.append((el, None, el.y0, el.y1, el.col))
+            continue
+        for i, ln in enumerate(el.lines):
+            col = "full" if el.col == "full" else ("left" if (ln.x0 + ln.x1) / 2 < width / 2 else "right")
+            targets.append((el, i, ln.y0, ln.y1, col))
+
+    for ann in notes:
+        cx = (ann.rect.x0 + ann.rect.x1) / 2
+        cy = (ann.rect.y0 + ann.rect.y1) / 2
+        side = "left" if cx < width / 2 else "right"
+        cands = [t for t in targets if t[4] in (side, "full")] or targets
+        if not cands:
+            elements[0].after.append(ann)
+            continue
+        el, idx, *_ = min(cands, key=lambda t: max(t[2] - cy, cy - t[3], 0.0))
+        if idx is None:
+            el.after.append(ann)
+            ann.anchor_text = f"{el.kind.upper()} {el.fl.label}".strip()
+            continue
+        el.notes.setdefault(idx, []).append(ann)
+        line = el.lines[idx]
+        ann.anchor_text = " ".join(w.text for w in line.words[:12])
+        numbered = [(abs(j - idx), ln.lineno) for j, ln in enumerate(el.lines) if ln.lineno]
+        if numbered:
+            ann.linenos = [min(numbered)[1]]
+
+
+# ---------------------------------------------------------------------------
+# Rendering
+# ---------------------------------------------------------------------------
+
+
+def _prefix(lines: list[Line]) -> str:
+    rng = line_range([ln.lineno for ln in lines if ln.lineno is not None])
+    return f"⟨{rng}⟩ " if rng else ""
+
+
+def _all_notes(el: Element) -> list[str]:
+    notes = [a for i in sorted(el.notes) for a in el.notes[i]] + el.after
+    return [note_tag(a) for a in notes]
+
+
+def render_element(el: Element, ctx: Context) -> str:
+    v, anns = ctx.vocab, ctx.anns
+    if el.kind == "page":
+        return "\n".join([f"--- Page {el.level} ---"] + _all_notes(el))
+    if el.kind == "title":
+        return "\n".join(["# " + flow(el.lines, v, anns)] + _all_notes(el))
+    if el.kind == "authors":
+        text = flow(el.lines, v, anns)
+        text = re.sub(r"(?<=[A-Za-z])[\d∗†]+(,\d+[\d∗†]*)*", "", text)
+        return "\n".join([f'[AUTHORS: "{text}"]'] + _all_notes(el))
+    if el.kind == "heading":
+        return "\n".join(["#" * el.level + " " + flow(el.lines, v, anns)] + _all_notes(el))
+    if el.kind == "para":
+        return _prefix(el.lines) + flow(el.lines, v, anns, el.notes)
+    if el.kind == "equation":
+        text = flow(el.lines, v, anns)
+        nums = [m.group(1) for ln in el.lines if (m := _EQ_NUM_RE.search(ln.text))]
+        label = f"EQUATION {nums[-1]}" if nums else "EQUATION"
+        return "\n".join([f'{_prefix(el.lines)}[{label}: "{text}"]'] + _all_notes(el))
+    if el.kind == "footnote":
+        return "\n".join([f'[FOOTNOTE: "{flow(el.lines, v, anns)}"]'] + _all_notes(el))
+
+    # figure / table
+    fl = el.fl
+    head = f"{fl.kind.upper()} {fl.label}".strip()
+    if fl.caption is not None:
+        caption = CAPTION_RE.sub("", flow(fl.caption.lines, v, anns), count=1).strip()
+        out = [f'[{head}: "{caption}"]']
+    else:
+        out = [f"[{head}]"]
+    if fl.kind == "table" and fl.inner:
+        out += ["```text"] + fl.rows() + ["```"]
+    elif fl.kind == "box":
+        out += ["```text"] + text_lines(fl.inner) + ["```"]
+    marked = flow(lines_of(fl.inner), v, anns, only_marked=True)
+    if marked:
+        out.append(marked)
+    return "\n".join(out + _all_notes(el))
+
+
+def _drop_back_matter(elements: list[Element]) -> list[Element]:
+    """Remove the reference list and appendix sections that carry no annotation."""
+    out: list[Element] = []
+    section: list[Element] = []
+    mode = "body"
+
+    def flush() -> None:
+        nonlocal section
+        if any(e.is_annotated() for e in section):
+            out.extend(section)
+        else:
+            out.extend(e for e in section if e.kind == "page")
+        section = []
+
+    for el in elements:
+        if el.kind == "heading":
+            if mode == "body" and _REFERENCES_RE.match(el.text.strip()):
+                mode = "refs"
+                continue
+            if mode != "body":  # first heading after the references starts the appendix
+                flush()
+                mode = "appendix"
+        if mode == "body":
+            out.append(el)
+        elif mode == "refs":
+            if el.kind == "page" or el.is_annotated():
+                out.append(el)
+        else:
+            section.append(el)
+    flush()
+
+    # Page markers with nothing left under them
+    return [
+        el
+        for i, el in enumerate(out)
+        if not (el.kind == "page" and not el.after and (i + 1 == len(out) or out[i + 1].kind == "page"))
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Entry points
+# ---------------------------------------------------------------------------
+
+
+def _count(ctx: Context) -> tuple[int, int]:
+    highlights = sum(1 for a in ctx.anns.values() if a.is_markup and a.text_parts)
+    notes = sum(1 for a in ctx.anns.values() if not a.is_markup and a.content)
+    return highlights, notes
+
+
+@dataclass
+class Document:
+    """A parsed PDF: its elements in reading order and the annotations found."""
+
+    elements: list[Element]
+    ctx: Context
+    page_sizes: list[tuple[float, float]]
+    annotations: list[Annotation]  # in paper order, with display IDs
+
+
+def load_document(pdf_path: Path) -> Document:
+    """Parse a PDF into elements and annotations (nothing is written)."""
+    doc = pymupdf.open(pdf_path)
+    layouts = [parse_page(page) for page in doc]
+    ctx = _doc_context(layouts)
+    elements: list[Element] = []
+    for page_num, (page, layout) in enumerate(zip(doc, layouts), start=1):
+        elements.extend(build_page(page, layout, page_num, ctx))
+    ordered = assign_ids(list(ctx.anns.values()))  # before rendering: notes show their ID
+    return Document(elements, ctx, [(pg.rect.width, pg.rect.height) for pg in doc], ordered)
+
+
+def extract(pdf_path: Path, out_path: Path, full: bool = False) -> tuple[int, int, int]:
+    """Extract pdf_path to Markdown at out_path, plus a JSON list of annotations.
+
+    With full=False the reference list and unannotated appendix sections are
+    left out. Returns (page_count, total_highlights, total_notes).
+    """
+    document = load_document(pdf_path)
+    ctx, ordered = document.ctx, document.annotations
+    elements = document.elements if full else _drop_back_matter(document.elements)
+
+    parts = [render_element(el, ctx) for el in elements]
+    for a in ordered:
+        if a.is_markup and not a.text_parts:
+            print(f"  WARNING: empty highlight text — page {a.page} ({a.id})", file=sys.stderr)
+    if ctx.skipped:
+        detail = ", ".join(f"{n} {why}" for why, n in sorted(ctx.skipped.items()))
+        print(f"  NOTE: skipped annotations without usable content: {detail}", file=sys.stderr)
+
+    text = "\n\n".join(p for p in parts if p)
+    if ordered:
+        text += "\n\n--- Annotations ---\n\n" + annotations_table(ordered)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    full_text = _process_references_and_appendix("\n\n".join(parts))
-    out_path.write_text(full_text, encoding="utf-8")
-
-    return len(doc), total_highlights, total_notes
+    out_path.write_text(text + "\n", encoding="utf-8")
+    out_path.with_suffix(".annotations.json").write_text(
+        json.dumps(
+            {
+                "pdf": Path(pdf_path).name,
+                "pages": len(document.page_sizes),
+                "skipped": dict(ctx.skipped),
+                "annotations": annotations_records(ordered),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return (len(document.page_sizes), *_count(ctx))
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# Lookups for viewers: where things are on the page, and the framing sections
 # ---------------------------------------------------------------------------
+
+
+def document_index(document: Document) -> dict:
+    """Where each line number and each named part of the paper sits.
+
+    Returns {"lines": {"267": [page, x0, y0, x1, y1]}, "anchors": {"table 2": [...]}}
+    with boxes in PDF points. Anchor keys are lower-case: "figure 3", "table 2",
+    "equation 6", "section 3.3.2", "appendix h.3".
+    """
+    lines: dict[str, list[float]] = {}
+    anchors: dict[str, list[float]] = {}
+
+    def box(page: int, x0: float, y0: float, x1: float, y1: float) -> list[float]:
+        return [page, round(x0, 1), round(y0, 1), round(x1, 1), round(y1, 1)]
+
+    for el in document.elements:
+        for ln in el.all_lines():
+            if ln.lineno is not None:
+                lines.setdefault(str(ln.lineno), box(el.page, ln.x0, ln.y0, ln.x1, ln.y1))
+        where = box(el.page, el.x0, el.y0, el.x1, el.y1)
+        if el.fl is not None and el.fl.label not in ("", "?"):
+            anchors.setdefault(f"{el.kind} {el.fl.label}".lower(), where)
+        elif el.kind == "equation":
+            nums = [m.group(1) for ln in el.lines if (m := _EQ_NUM_RE.search(ln.text))]
+            if nums:
+                anchors.setdefault(f"equation {nums[-1]}", where)
+        elif el.kind == "heading":
+            m = _NUMBERED_HEADING_RE.match(el.text.strip())
+            if m:
+                number = m.group(1).lower()
+                anchors.setdefault(f"section {number}", where)
+                if number[0].isalpha():
+                    anchors.setdefault(f"appendix {number}", where)
+    return {"lines": lines, "anchors": anchors}
+
+
+def front_matter(document: Document) -> dict[str, str]:
+    """The paper's own framing: abstract, stated contributions, conclusion (plain text)."""
+    vocab = document.ctx.vocab
+    sections: dict[str, list[Element]] = {}
+    current = None
+    for el in document.elements:
+        if el.kind == "heading":
+            name = re.sub(r"^[\dA-Z.]+\s+", "", el.text.strip()).lower()
+            current = name if el.level == 2 else current
+            continue
+        if current and el.kind == "para":
+            sections.setdefault(current, []).append(el)
+
+    def text_of(paras: list[Element]) -> str:
+        return "\n\n".join(plain_text(p.lines, vocab) for p in paras)
+
+    def section(prefix: str) -> list[Element]:
+        return next((v for k, v in sections.items() if k.startswith(prefix)), [])
+
+    intro = section("introduction")
+    start = next(
+        (i for i, p in enumerate(intro) if re.search(r"contribution", p.text, re.IGNORECASE)), None
+    )
+    contributions = intro[start:] if start is not None else intro[-1:]
+    return {
+        "abstract": text_of(section("abstract")),
+        "contributions": text_of(contributions),
+        "conclusion": text_of(section("conclusion")),
+    }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Extract highlights and margin notes from an annotated PDF."
+        description="Extract an annotated PDF to Markdown with highlights and notes in place."
+    )
+    parser.add_argument("pdf_path", help='Path to the annotated PDF (e.g., "papers/foo.pdf")')
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Keep the reference list and unannotated appendix sections",
     )
     parser.add_argument(
-        "pdf_path",
-        help='Path to the annotated PDF (e.g., "papers/foo.pdf")',
+        "--output-dir", default="outputs", help="Root directory for generated artifacts"
     )
-    parser.add_argument(
-        "--url",
-        type=str,
-        default=None,
-        help="Paper URL or arXiv ID to fetch BibTeX entry for prepending to output",
-    )
-
     args = parser.parse_args()
 
     pdf_path = Path(args.pdf_path)
@@ -531,30 +580,11 @@ def main() -> None:
         print(f"Error: file not found: {pdf_path}", file=sys.stderr)
         sys.exit(1)
 
-    out_path = Path("outputs/extracted") / (pdf_path.stem + ".txt")
-    n_pages, n_highlights, n_notes = extract(pdf_path, out_path)
+    out_path = Path(args.output_dir) / "extracted" / (pdf_path.stem + ".md")
+    n_pages, n_highlights, n_notes = extract(pdf_path, out_path, full=args.full)
 
     n_chars = len(out_path.read_text(encoding="utf-8"))
-    n_tokens_approx = n_chars // 4
-
-    # Fetch and prepend BibTeX if URL provided
-    if args.url:
-        print(f"Fetching BibTeX from: {args.url}", file=sys.stderr)
-        bibtex = get_bibtex_from_url(args.url)
-        if bibtex:
-            existing_text = out_path.read_text(encoding="utf-8")
-            bibtex_section = f"--- BibTeX ---\n\n{bibtex}\n\n"
-            out_path.write_text(bibtex_section + existing_text, encoding="utf-8")
-            print("BibTeX prepended to output.", file=sys.stderr)
-            n_chars = len(out_path.read_text(encoding="utf-8"))
-            n_tokens_approx = n_chars // 4
-        else:
-            print(
-                f"WARNING: Could not fetch BibTeX from provided URL: {args.url}",
-                file=sys.stderr,
-            )
-
-    print(f"Tokens:     ~{n_tokens_approx:,} (≈ chars/4)")
+    print(f"Tokens:     ~{n_chars // 4:,} (≈ chars/4)")
     print(f"Pages:      {n_pages}")
     print(f"Highlights: {n_highlights}")
     print(f"Notes:      {n_notes}")
@@ -563,9 +593,7 @@ def main() -> None:
     if n_highlights == 0:
         print("WARNING: no highlights found — was the PDF annotated?", file=sys.stderr)
     if n_notes == 0:
-        print(
-            "WARNING: no margin notes found — was the PDF annotated?", file=sys.stderr
-        )
+        print("WARNING: no margin notes found — was the PDF annotated?", file=sys.stderr)
 
 
 if __name__ == "__main__":

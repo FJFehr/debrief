@@ -3,7 +3,7 @@
 get_bibtex.py
 
 Usage:
-    python get_bibtex.py <url>
+    uv run python -m src.get_bibtex <url>
 
 This script tries to fetch BibTeX for a given paper URL. Supported/attempted sources:
 - arXiv (via arXiv bibtex endpoint)
@@ -295,6 +295,8 @@ def build_bib_from_meta_tags(
         if m and m.get("content"):
             venue = m["content"].strip()
             break
+    if not title:
+        return None  # no metadata on the page: let the other lookups try
     year = extract_year_from_meta_or_text(soup, html_text) or ""
     key = make_bibkey(author_field or "", year, title or "")
     entry_type = (
@@ -402,22 +404,6 @@ def get_bibtex_from_url(url: str) -> str | None:
     if result:
         print("[INFO] Found bibtex via generic scraping/DOI/meta.")
         return result
-    # 4) try DOI in the raw URL
-    doi_match = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", url)
-    if doi_match:
-        doi = doi_match.group(0)
-        result = doi_to_bibtex(doi)
-        if result:
-            print("[INFO] Found bibtex via DOI.")
-            return result
-    # last resort: try append .bib
-    try:
-        r = fetch(url + ".bib")
-        if r.status_code == 200 and r.text.strip().startswith("@"):
-            print("[INFO] Found .bib by appending .bib")
-            return r.text.strip()
-    except Exception:
-        pass
     return None
 
 

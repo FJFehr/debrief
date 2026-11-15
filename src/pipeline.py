@@ -3,10 +3,10 @@
 Pipeline: Extract annotations → Fetch BibTeX → Create Prompt → Summarise → Output
 
 Usage:
-    python src/pipeline.py --paper papers/foo.pdf --url https://arxiv.org/abs/...
-    python src/pipeline.py --paper papers/foo.pdf --url 2601.07296
-    python src/pipeline.py --paper papers/foo.pdf --url https://aclanthology.org/N19-1423/
-    python src/pipeline.py --paper papers/foo.pdf --url https://openreview.net/forum?id=...
+    uv run pipeline --paper papers/foo.pdf --url https://arxiv.org/abs/...
+    uv run pipeline --paper papers/foo.pdf --url 2601.07296
+    uv run pipeline --paper papers/foo.pdf --url https://aclanthology.org/N19-1423/
+    uv run pipeline --paper papers/foo.pdf --url https://openreview.net/forum?id=...
 
 Options:
     --paper     Path to annotated PDF file (required)
@@ -14,7 +14,7 @@ Options:
     --no-bibtex Skip BibTeX fetching step
 
 Outputs:
-    outputs/extracted/foo.txt      (annotated text)
+    outputs/extracted/foo.md       (annotated text, plus foo.annotations.json)
     outputs/bibtex/foo.bib         (fetched BibTeX, optional)
     outputs/prompts/foo.prompt.md  (prompt ready for manual or local model use)
 """
@@ -26,7 +26,6 @@ from pathlib import Path
 from src.extract import extract
 from src.get_bibtex import get_bibtex_from_url
 from src.summarise import summarise
-from src.llm_provider import prepare_prompt_for_provider
 
 
 def process_paper(
@@ -34,8 +33,7 @@ def process_paper(
     paper_url: str | None = None,
     include_bibtex: bool = True,
     output_dir: Path = Path("outputs"),
-    provider: str = "manual",
-    model: str | None = None,
+    full: bool = False,
 ) -> None:
     """
     Complete pipeline: extract → fetch BibTeX → prepend to extracted → create prompt.
@@ -44,6 +42,7 @@ def process_paper(
         pdf_path: Path to annotated PDF file
         paper_url: URL or arXiv ID for BibTeX retrieval
         include_bibtex: Whether to fetch and include BibTeX
+        full: Keep the reference list and unannotated appendix sections
     """
     pdf_file = Path(pdf_path)
     if not pdf_file.exists():
@@ -59,7 +58,7 @@ def process_paper(
     print("STEP 1: EXTRACT ANNOTATIONS FROM PDF")
     print(f"{'=' * 70}")
 
-    extracted_path = output_dir / "extracted" / f"{paper_name}.txt"
+    extracted_path = output_dir / "extracted" / f"{paper_name}.md"
     bibtex_path = output_dir / "bibtex" / f"{paper_name}.bib"
     prompt_output_path = output_dir / "prompts" / f"{paper_name}.prompt.md"
 
@@ -67,7 +66,7 @@ def process_paper(
     bibtex_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    n_pages, n_highlights, n_notes = extract(pdf_file, extracted_path)
+    n_pages, n_highlights, n_notes = extract(pdf_file, extracted_path, full=full)
 
     print(f"✓ Extracted from {n_pages} pages")
     print(f"  - {n_highlights} highlights")
@@ -111,14 +110,6 @@ def process_paper(
 
     print("✓ Prompt created from template and extracted content")
 
-    prepared_prompt = prompt_output_path.read_text(encoding="utf-8")
-    prepared_prompt = prepare_prompt_for_provider(
-        prompt=prepared_prompt,
-        provider=provider,
-        model=model,
-    )
-    prompt_output_path.write_text(prepared_prompt, encoding="utf-8")
-
     # ───────────────────────────────────────────────────────────────────────────
     # Done
     # ───────────────────────────────────────────────────────────────────────────
@@ -140,24 +131,17 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python src/pipeline.py --paper papers/LRAS.pdf --url 2601.07296
-  python src/pipeline.py --paper papers/foo.pdf --url https://arxiv.org/abs/2301.12345
-  python src/pipeline.py --paper papers/foo.pdf --url https://aclanthology.org/N19-1423/
-  python src/pipeline.py --paper papers/foo.pdf --provider local --model llama3.1:8b
-  python src/pipeline.py --paper papers/foo.pdf --no-bibtex
+  uv run pipeline --paper papers/LRAS.pdf --url 2601.07296
+  uv run pipeline --paper papers/foo.pdf --url https://arxiv.org/abs/2301.12345
+  uv run pipeline --paper papers/foo.pdf --url https://aclanthology.org/N19-1423/
+  uv run pipeline --paper papers/foo.pdf --no-bibtex
         """,
     )
 
     parser.add_argument(
         "--paper",
-        required=False,
+        required=True,
         help='Path to annotated PDF file (e.g., "papers/paper.pdf")',
-    )
-
-    parser.add_argument(
-        "--papers",
-        required=False,
-        help="Deprecated alias for --paper",
     )
 
     parser.add_argument(
@@ -173,16 +157,9 @@ Examples:
     )
 
     parser.add_argument(
-        "--provider",
-        default="manual",
-        choices=["manual", "local"],
-        help="Target model provider for the generated prompt",
-    )
-
-    parser.add_argument(
-        "--model",
-        default=None,
-        help="Optional model identifier (stored as metadata for manual/local use)",
+        "--full",
+        action="store_true",
+        help="Keep the reference list and unannotated appendix sections",
     )
 
     parser.add_argument(
@@ -193,20 +170,12 @@ Examples:
 
     args = parser.parse_args()
 
-    selected_paper = args.paper or args.papers
-    if not selected_paper:
-        parser.error("One of --paper or --papers is required")
-
-    if args.papers and not args.paper:
-        print("⚠ --papers is deprecated; use --paper", file=sys.stderr)
-
     process_paper(
-        pdf_path=selected_paper,
+        pdf_path=args.paper,
         paper_url=args.url,
         include_bibtex=not args.no_bibtex,
         output_dir=Path(args.output_dir),
-        provider=args.provider,
-        model=args.model,
+        full=args.full,
     )
 
 

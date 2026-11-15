@@ -2,8 +2,10 @@ You are helping a researcher create a precise personal reading note for their re
 
 Annotations appear as:
 
-* `[HIGHLIGHT <colour>: "text"]`
-* `[NOTE <position>: "comment"]`
+* `[HIGHLIGHT <colour>: "text"]`, inline at the highlighted words
+* `[NOTE <id> <position> <colour> @L<line>: "comment"]`, after the line the note sits next to
+
+`⟨L29–42⟩` at the start of a paragraph gives its line numbers in the PDF. Figures and tables appear as `[FIGURE N: "caption"]` and `[TABLE N: "caption"]`.
 
 Write the note in the researcher’s voice, using British English, formal and factual. Use commas or parentheses; do not use em dashes. Avoid vague language.
 

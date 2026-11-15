@@ -1,134 +1,45 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
-## Overall Objective
+## What this is
 
-A personal paper reading assistant that processes annotated PDFs into structured, personal research summaries. The pipeline has two stages:
+A reviewing assistant. It turns a PDF that the reviewer has annotated (highlights and margin notes) into a drafted peer review, in three steps:
 
-1. **Annotation extraction**: Parse a PDF with highlights (by color) and margin notes → produce an annotated text file that preserves the exact positions of all annotations inline with the source text.
-2. **Summary generation**: Feed the annotated text to Claude with a carefully designed prompt → produce an educated, opinionated summary in the reader's voice.
+1. **Extraction**: the PDF becomes Markdown with every highlight and note in place.
+2. **Interview**: a browser page where a model asks the reviewer about their notes, one question at a time, and tests their points against a bias register.
+3. **Draft**: a model writes the review in the venue's form from the interview record.
 
-The reader's margin notes are the primary signal for voice and emphasis. Highlights tell you what was deemed important; notes tell you *what the reader thought about it*. The output summaries are for personal research use (not yet for review or paper writing).
+The reviewer's notes and spoken answers are the source of every judgement. The model asks, organises and rephrases; it does not supply opinions of its own.
 
----
+An older second use, a prompt for a personal reading note with BibTeX (`uv run pipeline`), is still there but is not the focus.
 
-## Folder Structure (target)
+## Where things are
 
-```
-papers/          ← input: annotated PDFs
-outputs/
-  extracted/     ← intermediate: annotated .txt files (one per paper)
-  prompts/       ← generated prompts ready for model input
-  summaries/     ← optional final summaries
-  bibtex/        ← fetched BibTeX entries
-prompts/
-  templates/     ← versioned runtime prompt templates
-src/             ← extraction and summarisation code
-```
+| Topic | File |
+|---|---|
+| How to run it, quick start | [README.md](README.md) |
+| The interview, its stages, output files, options | [docs/review-interview.md](docs/review-interview.md) |
+| The annotated-text format | [docs/annotation-format.md](docs/annotation-format.md) |
+| Folder layout, code layout, tests | [docs/development.md](docs/development.md) |
+| Reading notes and BibTeX | [docs/reading-notes.md](docs/reading-notes.md) |
+| Reviewing guidelines, bias register, interview process, venue form | [reviewing/](reviewing/) |
+| Prompt templates used at run time | [prompts/templates/](prompts/templates/) |
 
----
+## Rules
 
-## Pipeline Step 1: PDF Annotation Extraction
+**Nothing confidential in the repo.** Tracked files must not name the reviewer, name or quote a submission under review, or quote a past review. Use "the reviewer" and invented examples. Annotated PDFs (`reviews/`, `papers/`), everything generated (`outputs/`), past reviews (`reviewing/my_reviews/`) and tests that quote a real paper (`tests/test_local_*.py`) are gitignored and stay that way.
 
-**Goal**: Produce a `.txt` file where every highlight and margin note from the PDF is placed inline at the exact location it appears in the text.
+**Only files in this repo.** The reviewing documents are read from `reviewing/` and PDFs from `reviews/`. Nothing is copied in from other folders.
 
-**Annotation types to capture**:
-- Highlighted text, with colour (yellow, green, red, etc.) — different colours may carry different reader intent
-- Margin notes / pop-up comments — placed immediately after the text segment they are anchored to
-- The spatial position of margin notes (left margin, right margin, inline) should be recorded, as position is often semantically meaningful (left = broad question, right = specific reaction, etc.)
+**Extraction keeps annotations exact.**
 
-**Recommended extraction library**: `pymupdf` (fitz) — it exposes highlight quads, annotation types, colours, and comment text.
+- Highlights are marked inline; their text comes from the highlight quads, never the bounding box.
+- Notes are placed after the line they are anchored to, in the same column as the note, not collected at the end.
+- Highlight and note colour is always kept.
+- Review line numbers (ACL/ARR margins) are stripped from the text and kept as `⟨L…⟩` and `@L…` references.
+- Each page boundary is marked: `--- Page 3 ---`.
 
-**Annotated text format** (to be finalised in code, but the intent is):
-```
-...source text...
-[NOTE right: "Good labels for me. What data do they use?"]
-...more source text with [HIGHLIGHT yellow: "key phrase"] inline...
-[NOTE left: "Its learning to search. I want to do something a bit different."]
-...
-```
+**The reviewer's words are stored as sent.** The interview record is written by the server, not the model, and answers are never tidied.
 
-Rules:
-- Notes are inserted at the point in the text where they are anchored, not collected at the end.
-- Highlight colour is always preserved.
-- Page numbers are marked at each page boundary: `--- Page 3 ---`.
-
----
-
-## Pipeline Step 2: Summary Generation Prompt
-
-This is the core prompt. It should produce a summary that reads like the researcher wrote it themselves, driven by their annotations.
-
-### Prompt design principles
-
-1. **Annotations drive voice**: The margin notes are paramount. They contain the reader's direct reactions, questions, and connections to their own work. The summary should echo this language and framing, not the abstract's language.
-2. **Highlights signal emphasis**: What was highlighted (especially in a distinct colour) tells you what the reader found important. Weight these sections more heavily.
-3. **Opinionated, not neutral**: This is a personal note, not a review. Be direct. If the reader's notes express scepticism, reflect that.
-4. **Structured but readable**: Answer the fixed questions, but write them as connected prose sections, not bullet dumps.
-
----
-
-### Summary Prompt Template
-
-```
-You are helping a researcher create a personal reading note for their research archive.
-You have been given the full text of a paper with the researcher's annotations embedded inline.
-Annotations appear in two forms:
-  - [HIGHLIGHT <colour>: "text"] — text the researcher highlighted while reading
-  - [NOTE <position>: "comment"] — the researcher's own words, written in the margin at that point in the paper
-
-Your job is to write a summary in the researcher's voice.
-
-CRITICAL RULES:
-- The researcher's margin notes ([NOTE ...]) are the most important input. They reveal what they found significant, surprising, or connected to their own work. Use their exact phrasing and framing wherever possible. Do not neutralise or academicise their voice.
-- Highlights show emphasis; notes show thought. Prioritise notes over highlights when they conflict.
-- Do not summarise the abstract. Read the full annotated text and synthesise from it.
-- Write in first person ("I", "they found", "what's interesting here is..."), as if the researcher is explaining the paper to a colleague.
-- Be concise but complete. Avoid padding.
-
-Answer the following questions as labelled sections. Each section should be 2–5 sentences of flowing prose unless the content demands more.
-
----
-
-**1. Main problem**
-What problem were the authors trying to solve? Why does it matter?
-
-**2. Their approach**
-How did they solve it? What is the key mechanism or insight?
-
-**3. What is novel**
-What is genuinely new here compared to prior work? Be specific — what had not been done before?
-
-**4. Models used**
-What base models or architectures did they use or fine-tune?
-
-**5. Datasets and benchmarks**
-What datasets, benchmarks, or evaluation setups did they use?
-
-**6. Key findings**
-What were the main results? Include numbers where the researcher highlighted them. Note any results the researcher flagged with scepticism or particular interest.
-
-**7. My take**
-Synthesise the researcher's margin notes into a personal assessment. What did they find most interesting? What open questions did they flag? What connections to their own work did they note?
-
-**8. Citation**
-- Lead author and institution
-- Full BibTeX entry (Ask for URL of the venue/year go to this url and get the bibtex entry) If the paper is from ACL, NEURIPS, ICML, ICLR, EMNLP, CVPR, ICCV, ECCV, or similar, you can get the BibTeX from the official proceedings website. For arXiv papers, you can use the arXiv ID to retrieve the BibTeX entry from arXiv's API.
-
----
-
-ANNOTATED PAPER TEXT:
-<insert annotated text here>
-```
-
----
-
-## Paper in This Repo
-
-**LRAS.pdf** — "LRAS: Advanced Legal Reasoning with Agentic Search", Yujin Zhou et al., HKUST / Shanghai AI Lab, arXiv 2026.
-
-- Problem: Legal LLMs have an introspection deficit — in 71.3% of failure cases they never trigger search even when tools are available, leading to confident hallucinations.
-- Solution: Two mechanisms — (i) Introspective Imitation Learning to recognise knowledge boundaries; (ii) Difficulty-aware RL for multi-step exploratory search.
-- Action space: `<think>` → `<search>` → `<information>` loop.
-- Results: 8.2–32% over baselines on JEC-QA, LegalBench, LawBench, LexEval.
+**Tests.** `uv run pytest` must pass before a commit. Tests that fetch from live sites are opt-in: `uv run pytest -m network`.

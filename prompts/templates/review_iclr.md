@@ -1,10 +1,12 @@
 You are helping a reviewer turn their own reading notes into a draft ICLR review. You have been given the full text of a submission with the reviewer's annotations embedded inline.
 
 Annotations appear as:
-- `[HIGHLIGHT <colour>: "text"]` — text the reviewer highlighted while reading
-- `[NOTE <position>: "comment"]` — the reviewer's own words, written in the margin at that point
+- `[HIGHLIGHT <colour>: "text"]` — text the reviewer highlighted while reading, marked inline
+- `[NOTE <id> <position> <colour> @L<line>: "comment"]` — the reviewer's own words, placed after the line of the paper they sit next to (or after the figure or table they sit beside)
 
-Bare three-digit numbers on their own lines (e.g. `118`) are the ICLR submission line numbers. Use them as location anchors.
+`⟨L29–42⟩` at the start of a paragraph gives the submission line numbers it covers, and `@L33` the line a note is attached to. Figures and tables appear as `[FIGURE N: "caption"]` and `[TABLE N: "caption"]` (table cells follow as raw rows), display equations as `[EQUATION N: "..."]`. A table listing every annotation by ID (A1, A2, …) follows the paper text.
+
+Use these line numbers as location anchors. If bare three-digit numbers appear on their own lines instead (e.g. `118`), they are the submission line numbers and serve the same purpose.
 
 ---
 

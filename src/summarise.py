@@ -1,7 +1,7 @@
 """Generate a prompt ready for manual pasting into Claude or a local model.
 
 Usage:
-    python src/summarise.py outputs/extracted/foo.txt
+    uv run summarise outputs/extracted/foo.md
 
 Writes: outputs/prompts/foo.prompt.md (ready to paste into a model)
 """
@@ -9,27 +9,14 @@ Writes: outputs/prompts/foo.prompt.md (ready to paste into a model)
 import sys
 from pathlib import Path
 
-PROMPT_CANDIDATES = (
-    Path("prompts/templates/summary.md"),
-    Path("prompts/summary_prompt.md"),
-)
-
-
-def resolve_prompt_path() -> Path:
-    for candidate in PROMPT_CANDIDATES:
-        if candidate.exists():
-            return candidate
-    print(
-        "Error: prompt template not found. Checked: "
-        + ", ".join(str(path) for path in PROMPT_CANDIDATES),
-        file=sys.stderr,
-    )
-    sys.exit(1)
+PROMPT_PATH = Path("prompts/templates/summary.md")
 
 
 def load_prompt(annotated_text: str, preface_text: str = "") -> str:
-    prompt_path = resolve_prompt_path()
-    template = prompt_path.read_text(encoding="utf-8")
+    if not PROMPT_PATH.exists():
+        print(f"Error: prompt template not found at {PROMPT_PATH}", file=sys.stderr)
+        sys.exit(1)
+    template = PROMPT_PATH.read_text(encoding="utf-8")
     if "<insert annotated text here>" not in template:
         print(
             "Error: prompt template missing '<insert annotated text here>' placeholder",
@@ -57,7 +44,7 @@ def summarise(input_path: Path, output_path: Path, preface_text: str = "") -> No
 def main() -> None:
     if len(sys.argv) != 2:
         print(
-            "Usage: python src/summarise.py outputs/extracted/foo.txt",
+            "Usage: uv run summarise outputs/extracted/foo.md",
             file=sys.stderr,
         )
         sys.exit(1)

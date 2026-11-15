@@ -4,7 +4,6 @@ __pycache__/
 *.pyc
 *.pyo
 .python-version
-uv.lock
 
 # IDE
 .vscode/
@@ -22,3 +21,8 @@ reviews/
 
 # Secrets
 .env
+
+# Anything that quotes a review or a paper under review stays local
+reviewing/my_reviews/
+reviewing/REVIEW_STYLE_ANALYSIS.md
+tests/test_local_*.py

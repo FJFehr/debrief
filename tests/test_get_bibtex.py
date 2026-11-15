@@ -6,6 +6,9 @@ Tests the BibTeX fetching functionality for various paper sources:
 - NeurIPS/Conference papers
 - OpenReview
 - arXiv
+
+Tests marked `network` fetch from live sites and are left out of a plain
+`uv run pytest`. Run them with `uv run pytest -m network`.
 """
 
 import pytest
@@ -17,39 +20,37 @@ from src.get_bibtex import (
 )
 
 
+@pytest.mark.network
 class TestACLAnthology:
     """Test ACL Anthology URL handling."""
 
-    def test_acl_coret_2025(self):
-        """Fetch CoRet paper from ACL 2025."""
+    def test_acl_bert_2019(self):
+        """Fetch the BERT paper from NAACL 2019."""
         url = "https://aclanthology.org/N19-1423/"
         bib = get_bibtex_from_url(url)
 
         assert bib is not None, "Should fetch BibTeX for ACL paper"
         assert "@inproceedings" in bib.lower(), "Should be @inproceedings"
-        assert "coret" in bib.lower(), (
-            "Should contain paper or author name"
-        )
-        assert "2025" in bib, "Should contain year 2025"
-        assert "code" in bib.lower(), "Should mention code/retrieval"
+        assert "bert" in bib.lower(), "Should contain the paper name"
+        assert "2019" in bib, "Should contain year 2019"
 
 
+@pytest.mark.network
 class TestOpenReview:
     """Test OpenReview URL handling."""
 
-    def test_openreview_vareg_2024(self):
-        """Fetch Nonparametric Variational Regularisation paper from OpenReview."""
+    def test_openreview_vit_2021(self):
+        """Fetch the Vision Transformer paper from OpenReview."""
         url = "https://openreview.net/forum?id=YicbFdNTTy"
         bib = get_bibtex_from_url(url)
 
         assert bib is not None, "Should fetch BibTeX for OpenReview paper"
         assert "@inproceedings" in bib or "@misc" in bib, "Should be valid entry type"
-        assert "nonparametric" in bib.lower(), (
-            "Should contain paper or author name"
-        )
-        assert "2024" in bib, "Should contain year 2024"
+        assert "image is worth" in bib.lower(), "Should contain the paper title"
+        assert "2021" in bib, "Should contain year 2021"
 
 
+@pytest.mark.network
 class TestNeurIPS:
     """Test NeurIPS/conference proceedings handling."""
 
@@ -67,6 +68,7 @@ class TestNeurIPS:
         assert "vaswani" in bib.lower(), "Should contain Vaswani as author"
 
 
+@pytest.mark.network
 class TestArXiv:
     """Test arXiv URL handling."""
 
@@ -96,25 +98,25 @@ class TestBibKeyGeneration:
     def test_bibkey_full_authors(self):
         """Test key generation with multiple authors."""
         authors = "Ashish Vaswani and Noam Shazeer"
-        year = "2024"
-        title = "Nonparametric Variational Regularisation"
-
-        key = make_bibkey(authors, year, title)
-
-        assert key.startswith("vaswani"), "Should use first author's last name"
-        assert "2024" in key, "Should contain year"
-        assert len(key) <= 60, "Should be reasonable length"
-
-    def test_bibkey_single_author(self):
-        """Test key generation with single author."""
-        authors = "Ashish Vaswani"
         year = "2017"
         title = "Attention is All You Need"
 
         key = make_bibkey(authors, year, title)
 
-        assert key.startswith("vaswani"), "Should use author's last name"
+        assert key.startswith("vaswani"), "Should use first author's last name"
         assert "2017" in key, "Should contain year"
+        assert len(key) <= 60, "Should be reasonable length"
+
+    def test_bibkey_single_author(self):
+        """Test key generation with single author."""
+        authors = "Jacob Devlin"
+        year = "2019"
+        title = "BERT"
+
+        key = make_bibkey(authors, year, title)
+
+        assert key.startswith("devlin"), "Should use author's last name"
+        assert "2019" in key, "Should contain year"
 
     def test_bibkey_no_authors(self):
         """Test key generation with no authors."""
@@ -128,6 +130,7 @@ class TestBibKeyGeneration:
         assert "2020" in key, "Should contain year"
 
 
+@pytest.mark.network
 class TestACLAnthologyDirect:
     """Test ACL Anthology .bib endpoint directly."""
 
@@ -140,6 +143,7 @@ class TestACLAnthologyDirect:
         assert "@inproceedings" in bib.lower(), "Should be @inproceedings"
 
 
+@pytest.mark.network
 class TestBibTexValidity:
     """Test that returned BibTeX is valid format."""
 

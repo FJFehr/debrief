@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review interview</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #dcdad4;
+    --accent: #2f5fd0; --accent-ink: #ffffff; --mine: #eef3ff; --warn: #b3261e;
+    --paper-bg: #8a8a8f; --chip: #f0efe9; --flash: rgba(47, 95, 208, .28);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1b1d; --panel: #252528; --ink: #ececee; --muted: #a0a0a6; --line: #3a3a3f;
+      --accent: #7ea2ff; --accent-ink: #10131c; --mine: #2a3350; --warn: #ff8a80;
+      --paper-bg: #111113; --chip: #323236; --flash: rgba(126, 162, 255, .35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  #app { display: grid; grid-template-columns: minmax(360px, 42%) 1fr; height: 100vh; }
+  button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.small { padding: 3px 8px; font-size: 13px; }
+  button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  a { color: var(--accent); }
+
+  /* left pane */
+  #left { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+  #left header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  #paperName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #stage { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .spacer { flex: 1; }
+  #log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-wrap: anywhere; }
+  .card.mine { background: var(--mine); align-self: flex-end; max-width: 92%; white-space: pre-wrap; }
+  .card .head { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+  .card .head b { color: var(--ink); }
+  .card p { margin: 0 0 8px; } .card p:last-child { margin-bottom: 0; }
+  .card ul, .card ol { margin: 0 0 8px; padding-left: 20px; }
+  .card h3, .card h4, .card h5 { margin: 12px 0 4px; font-size: 15px; }
+  .card blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
+  .card code { background: var(--chip); border-radius: 3px; padding: 0 3px; font-size: 13px; }
+  .card hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+  .field { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 10px; }
+  .fieldhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .tag { background: var(--chip); border-radius: 10px; padding: 0 8px; font-size: 12px; color: var(--muted); }
+  .why { font-size: 12.5px; cursor: pointer; text-decoration: underline; color: var(--muted); }
+  .whybox { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  #composer { border-top: 1px solid var(--line); background: var(--panel); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+  textarea, input[type=text] { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  textarea { min-height: 84px; resize: vertical; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .hint { color: var(--muted); font-size: 12.5px; }
+  .error { color: var(--warn); font-size: 13px; }
+  details.front { font-size: 13.5px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; max-height: 32vh; overflow-y: auto; }
+  details.front summary { cursor: pointer; color: var(--muted); }
+  details.front h5 { margin: 8px 0 2px; font-size: 13px; }
+  details.front p { margin: 0 0 6px; white-space: pre-wrap; }
+  .points { display: flex; flex-direction: column; gap: 5px; max-height: 30vh; overflow-y: auto; font-size: 13.5px; }
+  .obs { display: flex; gap: 6px; align-items: flex-start; }
+  .obs .text { flex: 1; }
+
+  /* right pane */
+  #right { overflow-y: auto; background: var(--paper-bg); padding: 14px; }
+  .page { position: relative; max-width: 900px; margin: 0 auto 6px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+  .page img { display: block; width: 100%; height: auto; }
+  .badge { position: absolute; transform: translate(-2px, -2px); background: #1d1d1f; color: #fff; font-size: 11px; line-height: 1; padding: 3px 5px; border-radius: 4px; cursor: pointer; opacity: .88; }
+  .badge:hover { opacity: 1; }
+  .flash { position: absolute; background: var(--flash); border: 2px solid var(--accent); border-radius: 3px; pointer-events: none; animation: flash 2.4s ease-out forwards; }
+  @keyframes flash { 0% { opacity: 0; } 12% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+  .pagenotes { max-width: 900px; margin: 0 auto 18px; background: var(--panel); border-radius: 0 0 6px 6px; padding: 6px 10px; font-size: 13.5px; }
+  .pagenotes .pn { color: var(--muted); font-size: 12px; }
+  .pagenotes .note { padding: 4px 0; border-top: 1px solid var(--line); cursor: pointer; white-space: pre-wrap; }
+  .pagenotes .note:first-of-type { border-top: 0; }
+  .pagenotes .note b { margin-right: 6px; }
+
+  dialog { width: min(900px, 92vw); max-height: 86vh; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 0; }
+  dialog header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); gap: 8px; }
+  dialog pre { margin: 0; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; max-height: 74vh; overflow-y: auto; }
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="left">
+    <header>
+      <span id="paperName">Loading…</span>
+      <span id="stage"></span>
+      <span class="spacer"></span>
+      <button class="small" id="recordBtn">Record</button>
+      <button class="small" id="restartBtn">Restart</button>
+    </header>
+    <div id="log"></div>
+    <div id="composer"></div>
+  </section>
+  <section id="right"><div id="pages"></div></section>
+</div>
+<dialog id="recordDialog">
+  <header><b>Interview record</b><span class="hint" id="recordPath"></span><span class="spacer"></span><button class="small" id="recordClose">Close</button></header>
+  <pre id="recordText"></pre>
+</dialog>
+
+<script>
+"use strict";
+const ROUNDS = {1: "The idea", 2: "Soundness", 3: "Gaps", 4: "Triage", 5: "Strengths", 6: "Deciders"};
+const $ = (id) => document.getElementById(id);
+let view = null;          // last /api/state
+let busy = false;
+let busySince = 0;
+let errorText = "";
+let draftText = "";       // answer text, kept across re-renders and failed sends
+let decisions = {};      // item id -> choice, for the question now open
+let lastTurnCount = -1;
+let paperDrawn = false;
+let copyables = [];       // Markdown source behind each Copy button
+
+// The drafting output is the review, then a line of ---, then the part for the reviewer only.
+function splitDraft(text) {
+  const m = text.match(/^\s*---+\s*$/m);
+  return m ? [text.slice(0, m.index).trim(), text.slice(m.index + m[0].length).trim()] : [text.trim(), ""];
+}
+
+/* ---------- text rendering ---------- */
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+function anchorKey(kind, label) {
+  kind = kind.toLowerCase().replace("fig.", "figure").replace("eq.", "equation");
+  label = label.toLowerCase();
+  const anchors = view.paper.anchors;
+  for (const k of [`${kind} ${label}`, `section ${label}`, `appendix ${label}`]) if (anchors[k]) return k;
+  return null;
+}
+
+// Turn references to places in the paper into links. Input is already HTML-escaped.
+const REF_RE = /\b(A\d+)\b|\b(?:L|[Ll]ines?\s+)(\d+)(?:\s*[–-]\s*(\d+))?\b|\b(Table|Figure|Fig\.|Equation|Eq\.|Section|Appendix)\s+([A-Z](?:\.\d+)*|\d+(?:\.\d+)*)|\b[Pp]age\s+(\d+)\b/g;
+function linkify(html) {
+  return html.replace(REF_RE, (m, ann, l1, l2, kind, label, page) => {
+    if (ann) return view.paper.annotations.some((a) => a.id === ann) ? `<a href="#" data-ref="ann:${ann}">${m}</a>` : m;
+    if (l1) return view.paper.lines[l1] ? `<a href="#" data-ref="line:${l1}:${l2 || l1}">${m}</a>` : m;
+    if (kind) { const key = anchorKey(kind, label); return key ? `<a href="#" data-ref="anchor:${key}">${m}</a>` : m; }
+    if (page) return +page <= view.paper.pages.length ? `<a href="#" data-ref="page:${page}">${m}</a>` : m;
+    return m;
+  });
+}
+
+function inline(text) {
+  let h = esc(text);
+  h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
+  h = h.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  h = h.replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>");
+  return linkify(h);
+}
+
+// A small Markdown subset: headings, lists, quotes, rules, paragraphs.
+function md(text) {
+  const out = [];
+  let list = null;
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const block of text.replace(/\r/g, "").split(/\n{2,}/)) {
+    for (const line of block.split("\n")) {
+      let m;
+      if (!line.trim()) continue;
+      if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { closeList(); const n = Math.min(5, m[1].length + 2); out.push(`<h${n}>${inline(m[2])}</h${n}>`); }
+      else if (/^\s*(---+|\*\*\*+)\s*$/.test(line)) { closeList(); out.push("<hr>"); }
+      else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(m[1])}</li>`); }
+      else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(m[1])}</li>`); }
+      else if ((m = line.match(/^>\s?(.*)$/))) { closeList(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); }
+      else { closeList(); out.push(`<p>${inline(line)}</p>`); }
+    }
+    closeList();
+  }
+  return out.join("");
+}
+
+/* ---------- paper pane ---------- */
+
+function drawPaper() {
+  const pages = $("pages");
+  pages.innerHTML = "";
+  view.paper.pages.forEach((pg, i) => {
+    const n = i + 1;
+    const el = document.createElement("div");
+    el.className = "page";
+    el.id = `page-${n}`;
+    el.style.aspectRatio = `${pg.width} / ${pg.height}`;
+    el.innerHTML = `<img src="/page/${n}.png" loading="lazy" alt="Page ${n}">`;
+    const notes = view.paper.annotations.filter((a) => a.page === n && a.type !== "highlight" && a.note);
+    for (const a of notes) {
+      const b = document.createElement("span");
+      b.className = "badge";
+      b.textContent = a.id;
+      b.title = a.note;
+      b.dataset.ref = `ann:${a.id}`;
+      b.style.left = `${(a.bbox[0] / pg.width) * 100}%`;
+      b.style.top = `${(a.bbox[1] / pg.height) * 100}%`;
+      el.appendChild(b);
+    }
+    pages.appendChild(el);
+    const list = document.createElement("div");
+    list.className = "pagenotes";
+    list.innerHTML = `<div class="pn">Page ${n}${notes.length ? "" : " · no notes"}</div>` + notes.map((a) =>
+      `<div class="note" data-ref="ann:${a.id}"><b>${a.id}</b><span class="tag">${a.lines ? "L" + a.lines[0] : esc(a.anchor || "")}</span> <span class="tag">${esc(a.colour)}</span> ${esc(a.note)}</div>`
+    ).join("");
+    pages.appendChild(list);
+  });
+}
+
+function showBox(page, x0, y0, x1, y1) {
+  const el = $(`page-${page}`);
+  if (!el) return;
+  const pg = view.paper.pages[page - 1];
+  const right = $("right");
+  const top = el.offsetTop + (y0 / pg.height) * el.clientHeight - right.clientHeight * 0.3;
+  right.scrollTo({top: Math.max(0, top), behavior: "smooth"});
+  const pad = 4;
+  const f = document.createElement("div");
+  f.className = "flash";
+  f.style.left = `${((x0 - pad) / pg.width) * 100}%`;
+  f.style.top = `${((y0 - pad) / pg.height) * 100}%`;
+  f.style.width = `${((x1 - x0 + 2 * pad) / pg.width) * 100}%`;
+  f.style.height = `${((y1 - y0 + 2 * pad) / pg.height) * 100}%`;
+  el.appendChild(f);
+  setTimeout(() => f.remove(), 2500);
+}
+
+function follow(ref) {
+  const [type, a, b] = ref.split(":");
+  if (type === "ann") {
+    const ann = view.paper.annotations.find((x) => x.id === a);
+    if (ann) showBox(ann.page, ...ann.bbox);
+  } else if (type === "line") {
+    const first = view.paper.lines[a], last = view.paper.lines[b] || first;
+    if (!first) return;
+    if (last[0] === first[0] && last[4] > first[2] && Math.abs(last[1] - first[1]) < 150)
+      showBox(first[0], Math.min(first[1], last[1]), first[2], Math.max(first[3], last[3]), last[4]);
+    else showBox(...first);
+  } else if (type === "anchor") {
+    const box = view.paper.anchors[ref.slice(7)];
+    if (box) showBox(...box);
+  } else if (type === "page") {
+    const pg = view.paper.pages[+a - 1];
+    if (pg) showBox(+a, 0, 0, pg.width, 40);
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-ref]");
+  if (el) { e.preventDefault(); follow(el.dataset.ref); }
+});
+
+/* ---------- interview pane ---------- */
+
+function questionCount() {
+  return view.session.turns.filter((t) => t.role === "claude" && t.fields.kind === "question" && !t.fields.follow_up).length;
+}
+
+function lastClaude() {
+  const turns = view.session.turns;
+  for (let i = turns.length - 1; i >= 0; i--) if (turns[i].role === "claude") return turns[i].fields;
+  return null;
+}
+
+function drawLog() {
+  const log = $("log");
+  const parts = [];
+  let q = 0;
+  view.session.turns.forEach((t, i) => {
+    if (t.role === "claude") {
+      const f = t.fields;
+      let head = "";
+      if (f.kind === "brief") head = "<b>Brief</b>";
+      else if (f.kind === "summary") head = "<b>Proposed summary</b>";
+      else if (f.kind === "end") head = "<b>Interview finished</b>";
+      else {
+        if (!f.follow_up) q += 1;
+        head = `<b>${f.follow_up ? "Follow-up" : "Q" + q}</b>`;
+        if (f.round && !f.follow_up) head += `<span>${ROUNDS[f.round]}</span>`;
+        if (f.title && !f.follow_up) head += `<span>· ${esc(f.title)}</span>`;
+        for (const s of f.sources || []) head += `<a href="#" class="tag" data-ref="ann:${s}">${s}</a>`;
+      }
+      const body = md(f.message);
+      // Which register entries triggered this question: shown only on request.
+      const regName = (id) => `${esc(id)}${view.paper.register[id] ? ": " + esc(view.paper.register[id].title) : ""}`;
+      const reasons = [];
+      if (f.register) reasons.push(`Register entry ${regName(f.register)}.`);
+      for (const it of f.items || []) if (it.register) reasons.push(`${esc(it.id)}: register entry ${regName(it.register)}.`);
+      if (reasons.length) head += `<span class="why" data-why="${i}">Why is this asked?</span>`;
+      const why = reasons.length ? `<div class="whybox" id="why-${i}" hidden>${reasons.join("<br>")}</div>` : "";
+      parts.push(`<div class="card"><div class="head">${head}</div>${body}${why}</div>`);
+    } else {
+      const tags = [];
+      if (t.kind === "brief") tags.push("corrections to the brief");
+      if (t.kind === "summary_accept") tags.push("summary accepted");
+      if (t.kind === "summary_change") tags.push("change requested");
+      if (t.kind === "wrap_up") tags.push("wrap up");
+      for (const [k, v] of Object.entries(t.decisions || {})) tags.push(`${k} ${v}`);
+      if (t.action === "skip") tags.push("skipped");
+      if (t.action === "you_decide") tags.push("you decide the wording");
+      const head = tags.length ? `<div class="head">${tags.map((x) => `<span class="tag">${esc(x)}</span>`).join("")}</div>` : "";
+      if (t.text || tags.length) parts.push(`<div class="card mine">${head}${esc(t.text || "")}</div>`);
+    }
+  });
+  // The draft: one block per form field, each with a button that copies its Markdown source.
+  copyables = [];
+  const copyBtn = (text, label) => { copyables.push(text); return `<button class="small" data-copy="${copyables.length - 1}">${label}</button>`; };
+  if (view.session.draft) {
+    const [review, notes] = splitDraft(view.session.draft);
+    const fields = review.split(/^## /m);
+    const title = fields.shift().replace(/^#\s*/, "").trim();
+    let body = "";
+    for (const field of fields) {
+      const nl = field.indexOf("\n");
+      const name = (nl < 0 ? field : field.slice(0, nl)).trim();
+      const text = nl < 0 ? "" : field.slice(nl + 1).trim();
+      body += `<div class="field"><div class="fieldhead"><b>${esc(name)}</b>${copyBtn(text, "Copy Markdown")}</div>${md(text)}</div>`;
+    }
+    parts.push(`<div class="card" id="draftCard"><div class="head"><b>Draft review</b><span>${esc(title)}</span>${copyBtn(review, "Copy whole review")}</div>
+      <div class="hint">Saved to ${esc(view.files.review_text)}</div>${body || md(review)}</div>`);
+    if (notes) parts.push(`<div class="card"><div class="head"><b>For you only</b><span>changes from the notes, Claude's additions, open items, source trace</span>${copyBtn(notes, "Copy Markdown")}</div>
+      <div class="hint">Saved to ${esc(view.files.trace)}. Not for the review form.</div>${md(notes)}</div>`);
+  }
+  if (view.session.check) {
+    parts.push(`<div class="card"><div class="head"><b>Check</b>${copyBtn(view.session.check, "Copy Markdown")}</div>
+      <div class="hint">Saved to ${esc(view.files.check)}</div>${md(view.session.check)}</div>`);
+  }
+  log.innerHTML = parts.join("");
+  log.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+    const label = b.textContent;
+    try { await navigator.clipboard.writeText(copyables[+b.dataset.copy]); b.textContent = "Copied"; }
+    catch (_) { b.textContent = "Copy failed"; }
+    setTimeout(() => { b.textContent = label; }, 1500);
+  }));
+  log.querySelectorAll("[data-why]").forEach((el) => el.addEventListener("click", () => { $(`why-${el.dataset.why}`).hidden = false; }));
+}
+
+function micRow() {
+  const supported = window.SpeechRecognition || window.webkitSpeechRecognition;
+  return `<div class="row">
+    ${supported ? `<button id="mic" title="Dictate into the text box">🎙 Dictate</button>` : ""}
+    <span class="hint" id="micHint">${supported
+      ? "Browser dictation sends audio to the browser's speech service (Chrome: Google, Safari: Apple). macOS dictation in the text box can run on-device."
+      : "This browser has no built-in dictation. macOS dictation works in the text box."}</span>
+  </div>`;
+}
+
+function drawComposer() {
+  const c = $("composer");
+  const stage = view.session.stage;
+  const asked = lastClaude();
+  const err = errorText ? `<div class="error">${esc(errorText)}</div>` : "";
+  if (busy) {
+    c.innerHTML = `<div class="hint" id="busyLine">Claude is working…</div>`;
+    return;
+  }
+  if (view.pending) {
+    c.innerHTML = `${err}<div class="hint">Your last answer is saved, but Claude has not replied to it (the call failed or was interrupted).</div>
+      <div class="row"><button class="primary" id="retryBtn">Ask Claude again</button></div>`;
+    $("retryBtn").onclick = () => post("/api/retry", {});
+    return;
+  }
+  if (stage === "new") {
+    c.innerHTML = `${err}<div class="hint">${view.paper.counts.notes} notes and ${view.paper.counts.highlights} highlights found. Claude will read the paper and your notes and come back with a brief. This takes a minute or two.</div>
+      <div class="row"><button class="primary" id="startBtn">Prepare the interview</button></div>`;
+    $("startBtn").onclick = () => post("/api/start", {});
+    return;
+  }
+  if (stage === "ended" || stage === "drafted") {
+    c.innerHTML = `${err}
+      <div class="row"><button class="${stage === "ended" ? "primary" : ""}" id="draftBtn">${stage === "ended" ? "Draft the review" : "Draft again"}</button>
+      <span class="hint">Written from your answers, in your guidelines' voice. Takes a minute or two.</span></div>
+      ${stage === "drafted" ? `<div class="row"><button id="checkBtn">Check the draft against your guidelines</button>
+        <span class="hint">Optional. Runs your checklist and bias checks over the draft. Scores stay with you, in the review form.</span></div>` : ""}`;
+    $("draftBtn").onclick = () => post("/api/draft", {});
+    if ($("checkBtn")) $("checkBtn").onclick = () => post("/api/check", {});
+    return;
+  }
+
+  if (asked.kind === "summary") {
+    if (!draftText) draftText = asked.message;
+    c.innerHTML = `${err}<div class="hint">Edit the paragraph until it is yours, then accept it. <span id="wc"></span></div>
+      <textarea id="answer" style="min-height:150px"></textarea>
+      ${micRow()}
+      <div class="row"><button class="primary" id="acceptBtn">Accept summary</button>
+        <input type="text" id="changeText" placeholder="Or say what to change, e.g. shorter, mention the datasets" style="flex:1">
+        <button id="changeBtn">Ask for a change</button></div>`;
+    $("acceptBtn").onclick = () => send({action: "summary_accept"});
+    $("changeBtn").onclick = () => { const t = $("changeText").value.trim(); if (t) post("/api/reply", {text: t}, true); };
+  } else if (asked.kind === "brief") {
+    c.innerHTML = `${err}<textarea id="answer" placeholder="Corrections to the brief, or leave empty"></textarea>${micRow()}
+      <div class="row"><button class="primary" id="sendBtn">Start the interview</button></div>`;
+    $("sendBtn").onclick = () => send({});
+  } else {
+    const fm = view.paper.front_matter;
+    const front = asked.summary_question ? `<details class="front"><summary>From the paper: abstract, contributions, conclusion</summary>
+      <h5>Abstract</h5><p>${esc(fm.abstract)}</p><h5>Contributions</h5><p>${esc(fm.contributions)}</p><h5>Conclusion</h5><p>${esc(fm.conclusion)}</p></details>` : "";
+    const CHOICES = {point: [["weakness", "Weakness"], ["comment", "Comment"], ["dropped", "Drop"]],
+                     observation: [["accepted", "Accept"], ["dropped", "Drop"]],
+                     strength: [["strength", "Keep"], ["dropped", "Drop"]]};
+    const items = (asked.items || []).map((it) =>
+      `<div class="obs"><div class="text"><b>${esc(it.id)}</b>${it.type === "observation" ? ' <span class="tag">Claude\'s</span>' : ""} ${inline(it.text)}</div>
+        ${(CHOICES[it.type] || CHOICES.point).map(([v, label]) =>
+          `<button class="small${decisions[it.id] === v ? " on" : ""}" data-item="${esc(it.id)}" data-v="${v}">${label}</button>`).join("")}</div>`).join("");
+    const points = items ? `<div class="points">${items}</div>` : "";
+    c.innerHTML = `${err}${front}${points}<textarea id="answer" placeholder="Talk it through: your answer, in your words"></textarea>${micRow()}
+      <div class="row"><span class="spacer"></span>
+        <button class="small" id="skipBtn">Skip</button>
+        <button class="small" id="decideBtn">You decide the wording</button>
+        <button class="small" id="wrapBtn">Wrap up</button>
+        <button class="primary" id="sendBtn">Send</button></div>`;
+    c.querySelectorAll("[data-item]").forEach((b) => b.addEventListener("click", () => {
+      const id = b.dataset.item;
+      if (decisions[id] === b.dataset.v) delete decisions[id]; else decisions[id] = b.dataset.v;
+      c.querySelectorAll(`[data-item="${id}"]`).forEach((x) => x.classList.toggle("on", decisions[id] === x.dataset.v));
+    }));
+    $("sendBtn").onclick = () => send({decisions});
+    $("skipBtn").onclick = () => send({action: "skip"}, true);
+    $("decideBtn").onclick = () => send({action: "you_decide", decisions});
+    $("wrapBtn").onclick = () => { if (confirm("End the interview here?")) send({action: "wrap_up"}); };
+  }
+
+  const answer = $("answer");
+  if (answer) {
+    answer.value = draftText;
+    const count = () => { if ($("wc")) $("wc").textContent = `${answer.value.trim().split(/\s+/).filter(Boolean).length} words`; };
+    count();
+    answer.addEventListener("input", () => { draftText = answer.value; keepDraft(); count(); });
+    answer.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); ($("sendBtn") || $("acceptBtn")).click(); } });
+    answer.focus();
+  }
+  if ($("mic")) $("mic").onclick = toggleMic;
+}
+
+function send(extra, withoutText) {
+  const text = withoutText ? "" : draftText;
+  post("/api/reply", Object.assign({text}, extra), true);
+}
+
+async function post(path, body, clearOnSuccess) {
+  stopMic();
+  busy = true; busySince = Date.now(); errorText = "";
+  drawComposer();
+  try {
+    const res = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Request failed");
+    view = data;
+    if (clearOnSuccess) { draftText = ""; decisions = {}; keepDraft(); }
+  } catch (e) {
+    // An answer is saved by the server before the model is asked, so reload to see what was stored.
+    let stored = false;
+    try { view = await (await fetch("/api/state")).json(); stored = view.pending; } catch (_) {}
+    if (stored && clearOnSuccess) { draftText = ""; decisions = {}; keepDraft(); }
+    errorText = stored ? e.message : `${e.message} Your text is still in the box.`;
+  }
+  busy = false;
+  draw();
+}
+
+setInterval(() => {
+  const el = $("busyLine");
+  if (busy && el) el.textContent = `Claude is working… ${Math.round((Date.now() - busySince) / 1000)} s`;
+}, 1000);
+
+/* ---------- unsent text survives a reload ---------- */
+
+const draftKey = () => `interview-unsent:${view ? view.paper.name : ""}`;
+function keepDraft() { try { localStorage.setItem(draftKey(), draftText); } catch (_) {} }
+function recallDraft() { try { return localStorage.getItem(draftKey()) || ""; } catch (_) { return ""; } }
+
+/* ---------- dictation ---------- */
+
+let recogniser = null;
+let listening = false;
+function toggleMic() { listening ? stopMic() : startMic(); }
+function startMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  recogniser = new SR();
+  recogniser.continuous = true;
+  recogniser.interimResults = true;
+  recogniser.lang = "en-GB";
+  recogniser.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const said = e.results[i][0].transcript;
+      if (e.results[i].isFinal) {
+        draftText = (draftText && !/\s$/.test(draftText) ? draftText + " " : draftText) + said.trim();
+        const a = $("answer");
+        keepDraft();
+        if (a) { a.value = draftText; a.dispatchEvent(new Event("input")); a.scrollTop = a.scrollHeight; }
+      } else interim += said;
+    }
+    if ($("micHint")) $("micHint").textContent = interim ? `… ${interim}` : "Listening.";
+  };
+  recogniser.onerror = (e) => { if ($("micHint")) $("micHint").textContent = `Dictation stopped: ${e.error}`; listening = false; markMic(); };
+  recogniser.onend = () => { if (listening) { try { recogniser.start(); } catch (_) { listening = false; markMic(); } } };
+  listening = true;
+  recogniser.start();
+  markMic();
+  if ($("micHint")) $("micHint").textContent = "Listening.";
+}
+function stopMic() {
+  listening = false;
+  if (recogniser) { try { recogniser.stop(); } catch (_) {} }
+  markMic();
+}
+function markMic() {
+  const b = $("mic");
+  if (b) { b.classList.toggle("on", listening); b.textContent = listening ? "■ Stop dictation" : "🎙 Dictate"; }
+}
+
+/* ---------- top level ---------- */
+
+function draw() {
+  if (!paperDrawn) { drawPaper(); paperDrawn = true; }
+  $("paperName").textContent = view.paper.name;
+  const asked = lastClaude();
+  const stageText = {new: "not started", ended: "interview finished", drafted: "draft ready"}[view.session.stage]
+    || (asked && asked.kind === "question" ? `question ${questionCount()} of 5` : asked ? {brief: "brief", summary: "summary"}[asked.kind] || "interview" : "");
+  $("stage").textContent = stageText;
+  drawLog();
+  drawComposer();
+  const count = view.session.turns.length + (view.session.draft ? 1 : 0) + (view.session.check ? 1 : 0);
+  if (count !== lastTurnCount) {
+    const log = $("log");
+    const cards = log.querySelectorAll(".card");
+    // When a draft exists and nothing came after it but its notes, show the draft first.
+    const last = (view.session.draft && !view.session.check && $("draftCard")) || cards[cards.length - 1];
+    if (last) log.scrollTo({top: last.offsetTop - 12, behavior: lastTurnCount < 0 ? "auto" : "smooth"});
+    if (lastTurnCount >= 0 && asked && asked.kind === "question" && (asked.sources || []).length) follow(`ann:${asked.sources[0]}`);
+    lastTurnCount = count;
+  }
+}
+
+$("recordBtn").onclick = async () => {
+  $("recordText").textContent = await (await fetch("/api/record")).text();
+  $("recordPath").textContent = view.files.answers;
+  $("recordDialog").showModal();
+};
+$("recordClose").onclick = () => $("recordDialog").close();
+$("restartBtn").onclick = () => {
+  if (confirm("Discard this interview and start again? The record file will be emptied.")) { draftText = ""; lastTurnCount = -1; post("/api/restart", {}); }
+};
+
+// If the page is opened or reloaded while the model is still answering, wait for it.
+async function load() {
+  const data = await (await fetch("/api/state")).json();
+  view = data;
+  if (!paperDrawn && !draftText) draftText = recallDraft();
+  if (data.busy && !busySince) busySince = Date.now();
+  busy = data.busy;
+  draw();
+  if (data.busy) setTimeout(load, 3000);
+}
+load();
+</script>
+</body>
+</html>
