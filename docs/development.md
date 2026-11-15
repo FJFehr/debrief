@@ -6,11 +6,11 @@
 |---|---|
 | `reviews/` | Input: annotated submissions under review (gitignored) |
 | `papers/` | Input: annotated papers for reading notes (gitignored) |
-| `reviewing/` | Reviewing guidelines, bias register, interview process, venue forms. Past reviews and their analysis are gitignored |
+| `reviewing/` | Reviewing guidelines, bias register, interview process, venue forms. Past reviews (`my_reviews/`, which the interview's final step adds to) and their analysis are gitignored |
 | `prompts/templates/` | Prompt templates used at run time |
-| `outputs/` | Everything generated; gitignored |
+| `outputs/` | Everything else that is generated; gitignored |
 | `outputs/extracted/` | Extracted `.md` files and `.annotations.json` sidecars |
-| `outputs/reviews/` | Interview records, review drafts and checks |
+| `outputs/reviews/` | Saved interviews and their records, checks, review drafts, reviews as submitted, and usage logs |
 | `outputs/prompts/` | Reading-note prompts |
 | `outputs/bibtex/` | BibTeX sidecars |
 | `docs/` | This documentation, plus venue guidance |
@@ -26,6 +26,7 @@
 | `src/annotations.py` | Reading annotations and matching them to text |
 | `src/render.py` | Markdown output and the annotation table |
 | `src/interview_app.py` | The browser interview (`interview` command); its page is `src/interview_static/index.html` |
+| `src/usage.py` | The stock-take printed from an interview's usage log (`stocktake` command) |
 | `src/review.py` | Review and interview prompt files (`review` command); loading of `reviewing/` documents |
 | `src/pipeline.py`, `src/summarise.py`, `src/get_bibtex.py` | Reading-note pipeline (`pipeline` command) |
 

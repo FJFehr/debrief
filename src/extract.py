@@ -396,6 +396,8 @@ def _drop_back_matter(elements: list[Element]) -> list[Element]:
         if el.kind == "heading":
             if mode == "body" and _REFERENCES_RE.match(el.text.strip()):
                 mode = "refs"
+                if el.is_annotated():  # a note or highlight on the heading itself stays in place
+                    out.append(el)
                 continue
             if mode != "body":  # first heading after the references starts the appendix
                 flush()

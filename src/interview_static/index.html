@@ -4,119 +4,256 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Review interview</title>
+<script>
+  // Light or dark: the reviewer's last choice, else the system setting. Set before the first paint.
+  (() => {
+    let t = null;
+    try { t = localStorage.getItem("interview-theme"); } catch (_) {}
+    document.documentElement.dataset.theme = t === "dark" || t === "light" ? t
+      : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  })();
+</script>
 <style>
+  /* Colour by role. Teal: the reviewer's words and what can be acted on. Gold: Claude's own points.
+     Brick: what is still open, and errors. Everything else is neutral.
+     Sizes are 12, 14, 16 and 20px; spacing moves in steps of 4 and 8; one corner radius.
+     Type follows the reviewer's template: titles and labels in the serif, text in the sans. */
   :root {
-    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #dcdad4;
-    --accent: #2f5fd0; --accent-ink: #ffffff; --mine: #eef3ff; --warn: #b3261e;
-    --paper-bg: #8a8a8f; --chip: #f0efe9; --flash: rgba(47, 95, 208, .28);
+    color-scheme: light;
+    --bg: #f0ece3; --panel: #f8f5ef; --ink: #2a2521; --muted: #6e6759; --line: #dacfba; --edge: #8a806b; --chip: #ece8de;
+    --accent: #267268; --accent-ink: #f8f5ef; --link: #267268; --link-on-tint: #1c564e; --mark: #2f8f82; --mine: #c1ddda;
+    --model: #796117; --model-tint: #efe3be; --warn: #8e423b; --warn-tint: #e8cbc9;
+    --paper-bg: #ded6c5; --shadow: rgba(40, 30, 15, .28);
+    /* On the page itself, which stays white in both themes. */
+    --locator: #267268; --badge: #26221d; --badge-ink: #ffffff;
+    --r: 8px; --bar: 48px; --gutter: 16px; --marker: 2.4em;
+    --serif: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #1b1b1d; --panel: #252528; --ink: #ececee; --muted: #a0a0a6; --line: #3a3a3f;
-      --accent: #7ea2ff; --accent-ink: #10131c; --mine: #2a3350; --warn: #ff8a80;
-      --paper-bg: #111113; --chip: #323236; --flash: rgba(126, 162, 255, .35);
-    }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1e1a16; --panel: #28231e; --ink: #ede6d8; --muted: #a79c8a; --line: #3a332b; --edge: #786d5c; --chip: #332d26;
+    --accent: #63aba1; --accent-ink: #1e1a16; --link: #8dc1ba; --link-on-tint: #8dc1ba; --mark: #63aba1; --mine: #1c2d2a;
+    --model: #e1cc88; --model-tint: #332c1a; --warn: #d5a09b; --warn-tint: #33221f;
+    --paper-bg: #14110e; --shadow: rgba(0, 0, 0, .6);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  #app { display: grid; grid-template-columns: minmax(360px, 42%) 1fr; height: 100vh; }
-  button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-  button:hover:not(:disabled) { border-color: var(--accent); }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--sans); }
+  #app { display: grid; grid-template-columns: 250px minmax(380px, min(38%, 680px)) 1fr; height: 100vh; }
+  #app.norail, #app.legacy { grid-template-columns: minmax(380px, min(42%, 720px)) 1fr; }
+  #app.norail #rail, #app.legacy #rail { display: none; }
+  button, select { font: inherit; font-size: 14px; color: var(--ink); background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r); padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--ink); }
   button:disabled { opacity: .5; cursor: default; }
-  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  button.small { padding: 3px 8px; font-size: 13px; }
-  button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  a { color: var(--accent); }
+  button.primary, button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.primary { font-weight: 600; }
+  button.small { padding: 2px 8px; }
+  button.icon { width: 32px; height: 32px; padding: 0; font-size: 16px; line-height: 1; flex: none; }
+  a { color: var(--link); }
+  :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  code { background: var(--chip); border-radius: 4px; padding: 0 4px; font-size: 14px; }
 
-  /* left pane */
-  #left { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
-  #left header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  #paperName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #stage { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  /* the top bar: one height in all three panes, so the rule under it runs straight across */
+  .bar { flex: 0 0 var(--bar); height: var(--bar); display: flex; align-items: center; gap: 8px; padding: 0 var(--gutter); border-bottom: 1px solid var(--line); background: var(--panel); min-width: 0; }
   .spacer { flex: 1; }
-  #log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-wrap: anywhere; }
-  .card.mine { background: var(--mine); align-self: flex-end; max-width: 92%; white-space: pre-wrap; }
-  .card .head { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
-  .card .head b { color: var(--ink); }
+
+  /* rail: the flow, then the index. It can be hidden with the button at the top of the middle pane. */
+  #rail { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); font-size: 14px; }
+  #paperName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  #flow { padding: 8px; border-bottom: 1px solid var(--line); }
+  #index { flex: 1; overflow-y: auto; padding: 0 8px 16px; }
+  #index .label { margin: 12px 8px 4px; }
+  #index .hint { margin-left: 8px; }
+  #index summary { cursor: pointer; }
+  /* Ticks in the flow and IDs in the index share one column. */
+  .step, .irow { display: flex; gap: 4px; padding: 4px 8px; border-radius: var(--r); color: var(--ink); text-decoration: none; }
+  .step .mark, .irow b { flex: 0 0 var(--marker); }
+  a.step:hover, a.irow:hover { background: var(--chip); }
+  .step.later { color: var(--muted); }
+  .step.current { font-weight: 600; }
+  .step .mark { color: var(--mark); }
+  a.step.sel, a.step.sel:hover, .irow.sel, .irow.sel:hover { background: var(--mine); }
+  .irow .arrows { margin-left: auto; white-space: nowrap; visibility: hidden; }
+  .irow:hover .arrows { visibility: visible; }
+  .arrows span { padding: 0 4px; cursor: pointer; color: var(--muted); }
+  .irow.sel .arrows span { color: var(--ink); }
+  .arrows span:hover { color: var(--link); }
+
+  /* small parts */
+  .label { font-family: var(--serif); font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+  .label .sub { font-family: var(--sans); font-weight: 400; color: var(--muted); }
+  .tag { display: inline-block; background: var(--chip); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; font-size: 12px; line-height: 1.6; white-space: nowrap; }
+  a.tag { color: var(--link); text-decoration: none; }
+  .tag.model { background: var(--model-tint); color: var(--model); border-color: transparent; font-weight: 600; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--edge); margin-right: 4px; }
+  .flag { display: inline-block; background: var(--warn-tint); color: var(--warn); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 1.6; white-space: nowrap; }
+  .error { color: var(--warn); font-size: 14px; }
+  .hint { color: var(--muted); font-size: 14px; }
+  .hint p { margin: 0 0 4px; }
+  .callout { background: var(--warn-tint); border-radius: var(--r); padding: 8px 12px; font-size: 14px; }
+  .callout .label { color: var(--warn); }
+  .callout ul { margin: 0; padding-left: 20px; }
+  .callout a { color: inherit; }
+  details > summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+  details.more { margin-top: 4px; font-size: 14px; }
+  details.more[open] > summary { margin-bottom: 4px; }
+
+  /* middle pane */
+  #mid { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+  #head > b { font-family: var(--serif); font-size: 20px; line-height: 1; }
+  #log { flex: 1; overflow-y: auto; padding: var(--gutter); display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 16px; overflow-wrap: anywhere; }
+  .card.mine { background: var(--mine); border-color: transparent; align-self: flex-end; max-width: 92%; white-space: pre-wrap; }
+  .card.mine a { color: var(--link-on-tint); }
+  .card.mine .tag { background: none; border: 0; padding: 0; color: var(--ink); font-weight: 600; }
+  .card .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+  .card .head b { font-family: var(--serif); font-size: 16px; color: var(--ink); }
   .card p { margin: 0 0 8px; } .card p:last-child { margin-bottom: 0; }
   .card ul, .card ol { margin: 0 0 8px; padding-left: 20px; }
-  .card h3, .card h4, .card h5 { margin: 12px 0 4px; font-size: 15px; }
-  .card blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
-  .card code { background: var(--chip); border-radius: 3px; padding: 0 3px; font-size: 13px; }
+  .card h3, .card h4, .card h5 { margin: 12px 0 4px; font-family: var(--serif); font-size: 16px; }
+  .card blockquote { margin: 0 0 8px; padding-left: 12px; border-left: 2px solid var(--line); color: var(--muted); }
   .card hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
-  .field { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 10px; }
-  .fieldhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-  .tag { background: var(--chip); border-radius: 10px; padding: 0 8px; font-size: 12px; color: var(--muted); }
-  .why { font-size: 12.5px; cursor: pointer; text-decoration: underline; color: var(--muted); }
-  .whybox { font-size: 13px; color: var(--muted); margin-top: 6px; }
-  #composer { border-top: 1px solid var(--line); background: var(--panel); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-  textarea, input[type=text] { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
-  textarea { min-height: 84px; resize: vertical; }
-  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .hint { color: var(--muted); font-size: 12.5px; }
-  .error { color: var(--warn); font-size: 13px; }
-  details.front { font-size: 13.5px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; max-height: 32vh; overflow-y: auto; }
-  details.front summary { cursor: pointer; color: var(--muted); }
-  details.front h5 { margin: 8px 0 2px; font-size: 13px; }
-  details.front p { margin: 0 0 6px; white-space: pre-wrap; }
-  .points { display: flex; flex-direction: column; gap: 5px; max-height: 30vh; overflow-y: auto; font-size: 13.5px; }
-  .obs { display: flex; gap: 6px; align-items: flex-start; }
+  .card > .label { margin-top: 12px; }
+  .card > .hint { margin-top: 8px; }
+  .field { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 12px; }
+  .fieldhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  /* One thing the reviewer is asked: its number, the question, then what it rests on. */
+  .ask { display: grid; grid-template-columns: var(--marker) minmax(0, 1fr); gap: 4px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .ask:first-of-type { border-top: 0; padding-top: 0; }
+  .ask .num { color: var(--muted); }
+  .ask .q { font-weight: 600; }
+  .ask .notes { font-size: 14px; margin-top: 4px; }
+  .ask.done { color: var(--muted); } .ask.done .q { font-weight: 400; }
+  .bullet { display: grid; grid-template-columns: var(--marker) minmax(0, 1fr); gap: 4px; border-top: 1px solid var(--line); padding: 8px 0; cursor: pointer; }
+  .bullet:hover { background: var(--chip); }
+  .bullet.dropped { color: var(--muted); text-decoration: line-through; }
+  .plan { font-size: 14px; }
+  details.history { border-top: 1px solid var(--line); padding-top: 8px; }
+  details.history[open] { display: flex; flex-direction: column; gap: 12px; }
+  /* the open entry */
+  .src { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: baseline; margin-bottom: 4px; }
+  .under { font-family: var(--serif); font-style: italic; color: var(--muted); font-size: 14px; }
+  .still { background: var(--warn-tint); color: var(--warn); border-radius: var(--r); padding: 4px 12px; font-size: 14px; margin-top: 8px; }
+  .still button { color: var(--ink); }
+  .part { display: block; margin-top: 8px; }
+  .part .label { font-size: 12px; }
+  .finding { border-top: 1px solid var(--line); padding: 8px 0; }
+  .finding.done { color: var(--muted); }
+  .finding .label { margin-top: 8px; }
+  .suggest { background: var(--bg); border-radius: var(--r); padding: 8px 12px; margin-bottom: 8px; }
+  .finding .row { margin-top: 4px; }
+  #composer { border-top: 1px solid var(--line); background: var(--panel); padding: 12px var(--gutter); display: flex; flex-direction: column; gap: 8px; max-height: 64vh; overflow-y: auto; }
+  textarea, input[type=text] { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--edge); border-radius: var(--r); padding: 8px 12px; }
+  textarea { min-height: 120px; resize: vertical; flex-shrink: 0; display: block; }
+  .part textarea { min-height: 72px; }
+  textarea:focus-visible, input[type=text]:focus-visible { outline-offset: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #micHint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  details.front { font-size: 14px; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; max-height: 32vh; overflow-y: auto; flex-shrink: 0; }
+  details.front h5 { margin: 8px 0 4px; font-size: 14px; }
+  details.front p { margin: 0 0 8px; white-space: pre-wrap; }
+  .points { display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow-y: auto; font-size: 14px; flex-shrink: 0; }
+  .obs { display: flex; gap: 8px; align-items: flex-start; }
   .obs .text { flex: 1; }
+  .claim { cursor: text; border-bottom: 1px dashed var(--edge); }
 
-  /* right pane */
-  #right { overflow-y: auto; background: var(--paper-bg); padding: 14px; }
-  .page { position: relative; max-width: 900px; margin: 0 auto 6px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+  /* right pane: the paper. The page and the reviewer's highlights keep their own colours in both themes. */
+  #right { display: flex; flex-direction: column; min-height: 0; background: var(--paper-bg); }
+  #paperScroll { position: relative; flex: 1; overflow-y: auto; padding: var(--gutter); }
+  .page { position: relative; max-width: 900px; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px var(--shadow); }
   .page img { display: block; width: 100%; height: auto; }
-  .badge { position: absolute; transform: translate(-2px, -2px); background: #1d1d1f; color: #fff; font-size: 11px; line-height: 1; padding: 3px 5px; border-radius: 4px; cursor: pointer; opacity: .88; }
+  .badge { position: absolute; transform: translate(-2px, -2px); background: var(--badge); color: var(--badge-ink); font-size: 12px; font-weight: 600; line-height: 1; padding: 3px 5px; border-radius: 4px; cursor: pointer; opacity: .88; }
   .badge:hover { opacity: 1; }
-  .flash { position: absolute; background: var(--flash); border: 2px solid var(--accent); border-radius: 3px; pointer-events: none; animation: flash 2.4s ease-out forwards; }
+  .badge.over { transform: translate(-2px, -95%); }  /* above a highlight, so the marked words stay readable */
+  /* The marker that points to a place is an outline with no fill, so it never tints a highlight. */
+  .flash { position: absolute; border: 2px solid var(--locator); box-shadow: 0 0 0 4px color-mix(in srgb, var(--locator) 25%, transparent); border-radius: 4px; pointer-events: none; animation: flash 2.4s ease-out forwards; }
   @keyframes flash { 0% { opacity: 0; } 12% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
-  .pagenotes { max-width: 900px; margin: 0 auto 18px; background: var(--panel); border-radius: 0 0 6px 6px; padding: 6px 10px; font-size: 13.5px; }
-  .pagenotes .pn { color: var(--muted); font-size: 12px; }
-  .pagenotes .note { padding: 4px 0; border-top: 1px solid var(--line); cursor: pointer; white-space: pre-wrap; }
-  .pagenotes .note:first-of-type { border-top: 0; }
-  .pagenotes .note b { margin-right: 6px; }
-
-  dialog { width: min(900px, 92vw); max-height: 86vh; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 0; }
-  dialog header { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); gap: 8px; }
-  dialog pre { margin: 0; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; max-height: 74vh; overflow-y: auto; }
+  /* Notes under a page sit on one grid: ID, line, colour, text. */
+  .pagenotes { display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); column-gap: 8px; max-width: 900px; margin: 0 auto 16px; background: var(--panel); border-radius: 0 0 var(--r) var(--r); padding: 8px 12px; font-size: 14px; }
+  .pagenotes .label { grid-column: 1 / -1; }
+  .pagenotes .note { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--line); cursor: pointer; }
+  .pagenotes .tag { justify-self: start; max-width: 12em; overflow: hidden; text-overflow: ellipsis; }
+  .pagenotes .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
 <div id="app">
-  <section id="left">
-    <header>
-      <span id="paperName">Loading…</span>
-      <span id="stage"></span>
-      <span class="spacer"></span>
-      <button class="small" id="recordBtn">Record</button>
-      <button class="small" id="restartBtn">Restart</button>
-    </header>
+  <nav id="rail">
+    <div class="bar"><span id="paperName">Loading…</span></div>
+    <div id="flow"></div>
+    <div id="index"></div>
+  </nav>
+  <section id="mid">
+    <header id="head" class="bar"></header>
     <div id="log"></div>
     <div id="composer"></div>
   </section>
-  <section id="right"><div id="pages"></div></section>
+  <section id="right">
+    <div class="bar"><span id="pageNow" class="hint"></span><span class="spacer"></span><button id="themeBtn" class="icon"></button></div>
+    <div id="paperScroll"><div id="pages"></div></div>
+  </section>
 </div>
-<dialog id="recordDialog">
-  <header><b>Interview record</b><span class="hint" id="recordPath"></span><span class="spacer"></span><button class="small" id="recordClose">Close</button></header>
-  <pre id="recordText"></pre>
-</dialog>
 
 <script>
 "use strict";
-const ROUNDS = {1: "The idea", 2: "Soundness", 3: "Gaps", 4: "Triage", 5: "Strengths", 6: "Deciders"};
+const STEPS = [["brief", "Brief"], ["summary", "Summary"], ["strengths", "Strengths"], ["weaknesses", "Weaknesses"],
+               ["comments", "Comments"], ["bias", "Bias test"], ["draft", "Draft"], ["final", "Final"]];
+const STEP_NAME = Object.fromEntries(STEPS);
+const SECTIONS = ["summary", "strengths", "weaknesses", "comments", "bias"];
+const KINDS = [["strength", "Strengths"], ["weakness", "Weaknesses"], ["comment", "Comments"]];
+const SECTION_KIND = {strengths: "strength", weaknesses: "weakness", comments: "comment"};
+// The parts behind an entry's text, by kind. They sit folded away under the text.
+const PARTS = {
+  strength: [["claim", "Label in the index"], ["body", "What the paper does and why it matters"], ["where", "Where it shows"]],
+  weakness: [["claim", "Label in the index"], ["body", "What is missing"], ["where", "Where it shows"],
+             ["undermines", "Which claim it undermines"], ["resolve", "What would resolve it"]],
+  comment: [["claim", "Label in the index"]],
+  observation: [["claim", "Label in the index"], ["body", "Claude's observation"], ["where", "Where it shows"]],
+};
+const GAPS = {where: "location", resolve: "fix"};
+const TURN_TAG = {brief: "corrections to the brief", answer: "answer", change: "change requested", accept: "accepted", skip: "skipped"};
+const EMPTY_TAG = {brief: "no corrections", answer: "wording left to Claude"};
+// Marks a point Claude raised itself, until the reviewer adopts or drops it.
+const CLAUDES = `<span class="tag model">Claude's</span>`;
 const $ = (id) => document.getElementById(id);
 let view = null;          // last /api/state
-let busy = false;
-let busySince = 0;
+let busy = false;         // a request is in flight
+let busySince = 0;        // when the model started working, for the timer; 0 when it is not
 let errorText = "";
-let draftText = "";       // answer text, kept across re-renders and failed sends
-let decisions = {};      // item id -> choice, for the question now open
-let lastTurnCount = -1;
+let unsent = "";          // what the reviewer is saying or typing, kept across re-renders and failed sends
+let edits = {};           // hand edits to the summary and to the final text, until they are saved
+let sel = null;           // the step shown in the middle pane
+let openId = null;        // the entry open in the editor
+let stageSeen = null;
+let shown = {};           // what the last draw showed, to scroll to what is new
 let paperDrawn = false;
 let copyables = [];       // Markdown source behind each Copy button
+let unfolded = new Set(); // the folded parts the reviewer has opened, so a redraw leaves them open
+let micSel = "#say";      // the text box dictation writes into: the one last clicked in
+
+const stepNow = () => (view.session.stage === "new" ? "brief" : view.session.stage);
+const stepAt = (step) => STEPS.findIndex(([k]) => k === step);
+const entries = () => view.session.entries || [];
+// An entry by its ID, or by an ID it had before it was moved to another kind.
+const entryOf = (id) => entries().find((e) => e.id === id) || entries().find((e) => (e.was || []).includes(id));
+const live = (kind) => entries().filter((e) => e.kind === kind && !e.dropped);
+const needs = (e) => (e.dropped || !(e.gaps || []).length ? "" : `no ${e.gaps.map((g) => GAPS[g]).join(" or ")} yet`);
+const lastClaude = () => (view.session.turns.findLast((t) => t.role === "claude") || {fields: {}}).fields;
+const clip = (text, n) => (text.length > n ? text.slice(0, n - 1).trimEnd() + "…" : text);
+// A part that stays folded until the reviewer opens it.
+const fold = (key, summary, body, cls = "more") =>
+  `<details class="${cls}" data-k="${key}"${unfolded.has(key) ? " open" : ""}><summary>${summary}</summary>${body}</details>`;
+
+// What is still open in a section, or before the draft. `undecided` must be settled; `gaps` may be accepted.
+function openItems(step) {
+  const kinds = {summary: [], strengths: ["strength"], weaknesses: ["weakness"], comments: []}[step] || ["strength", "weakness"];
+  const gaps = entries().filter((e) => kinds.includes(e.kind) && needs(e)).map((e) => `${e.id} has ${needs(e)}.`);
+  const undecided = step === "weaknesses" ? live("observation").map((e) => `${e.id} is Claude's: make it a weakness or a comment, or drop it.`) : [];
+  const all = [...undecided, ...gaps];
+  const html = all.length ? `<div class="callout"><div class="label">${undecided.length ? "Before you can accept" : "Still open"}</div><ul>${all.map((x) => `<li>${inline(x)}</li>`).join("")}</ul></div>` : "";
+  return {gaps, undecided, html};
+}
 
 // The drafting output is the review, then a line of ---, then the part for the reviewer only.
 function splitDraft(text) {
@@ -124,9 +261,24 @@ function splitDraft(text) {
   return m ? [text.slice(0, m.index).trim(), text.slice(m.index + m[0].length).trim()] : [text.trim(), ""];
 }
 
+/* ---------- what the reviewer does, for the stock-take after a paper ---------- */
+
+let tracked = [];
+function track(event, data = {}) { tracked.push({event, at: new Date().toISOString(), ...data}); }
+function sendTracked() {
+  if (!tracked.length) return;
+  const events = tracked;
+  tracked = [];
+  try {
+    fetch("/api/event", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({events}), keepalive: true}).catch(() => {});
+  } catch (_) {}
+}
+setInterval(sendTracked, 3000);
+addEventListener("pagehide", sendTracked);
+
 /* ---------- text rendering ---------- */
 
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
 function anchorKey(kind, label) {
   kind = kind.toLowerCase().replace("fig.", "figure").replace("eq.", "equation");
@@ -136,15 +288,16 @@ function anchorKey(kind, label) {
   return null;
 }
 
-// Turn references to places in the paper into links. Input is already HTML-escaped.
-const REF_RE = /\b(A\d+)\b|\b(?:L|[Ll]ines?\s+)(\d+)(?:\s*[–-]\s*(\d+))?\b|\b(Table|Figure|Fig\.|Equation|Eq\.|Section|Appendix)\s+([A-Z](?:\.\d+)*|\d+(?:\.\d+)*)|\b[Pp]age\s+(\d+)\b/g;
+// Turn references to places in the paper, and entry IDs, into links. Input is already HTML-escaped.
+const REF_RE = /\b(A\d+)\b|\b(?:L|[Ll]ines?\s+)(\d+)(?:\s*[–-]\s*(\d+))?\b|\b(Table|Figure|Fig\.|Equation|Eq\.|Section|Appendix)\s+([A-Z](?:\.\d+)*|\d+(?:\.\d+)*)|\b[Pp]age\s+(\d+)\b|\b([SWCO]\d+)\b/g;
 function linkify(html) {
-  return html.replace(REF_RE, (m, ann, l1, l2, kind, label, page) => {
+  return html.replace(REF_RE, (m, ann, l1, l2, kind, label, page, entry) => {
     if (ann) return view.paper.annotations.some((a) => a.id === ann) ? `<a href="#" data-ref="ann:${ann}">${m}</a>` : m;
     if (l1) return view.paper.lines[l1] ? `<a href="#" data-ref="line:${l1}:${l2 || l1}">${m}</a>` : m;
     if (kind) { const key = anchorKey(kind, label); return key ? `<a href="#" data-ref="anchor:${key}">${m}</a>` : m; }
     if (page) return +page <= view.paper.pages.length ? `<a href="#" data-ref="page:${page}">${m}</a>` : m;
-    return m;
+    const e = entryOf(entry);
+    return e ? `<a href="#" data-entry="${e.id}" title="${esc(e.claim || "")}">${m}</a>` : m;
   });
 }
 
@@ -189,10 +342,11 @@ function drawPaper() {
     el.id = `page-${n}`;
     el.style.aspectRatio = `${pg.width} / ${pg.height}`;
     el.innerHTML = `<img src="/page/${n}.png" loading="lazy" alt="Page ${n}">`;
-    const notes = view.paper.annotations.filter((a) => a.page === n && a.type !== "highlight" && a.note);
+    // Everything the reviewer wrote: sticky notes, text boxes, and comments attached to a highlight.
+    const notes = view.paper.annotations.filter((a) => a.page === n && a.note);
     for (const a of notes) {
       const b = document.createElement("span");
-      b.className = "badge";
+      b.className = a.text == null ? "badge" : "badge over";   // only a mark on text carries its words
       b.textContent = a.id;
       b.title = a.note;
       b.dataset.ref = `ann:${a.id}`;
@@ -203,18 +357,31 @@ function drawPaper() {
     pages.appendChild(el);
     const list = document.createElement("div");
     list.className = "pagenotes";
-    list.innerHTML = `<div class="pn">Page ${n}${notes.length ? "" : " · no notes"}</div>` + notes.map((a) =>
-      `<div class="note" data-ref="ann:${a.id}"><b>${a.id}</b><span class="tag">${a.lines ? "L" + a.lines[0] : esc(a.anchor || "")}</span> <span class="tag">${esc(a.colour)}</span> ${esc(a.note)}</div>`
+    // The swatch is the annotation's own colour, as it is in the PDF.
+    const swatch = (a) => (/^#[0-9a-f]{6}$/i.test(a.hex || "") ? `<i class="dot" style="background:${a.hex}"></i>` : "");
+    const place = (a) => (a.lines ? "L" + a.lines[0] : esc(a.anchor || ""));
+    list.innerHTML = `<div class="label">Page ${n}${notes.length ? "" : `<span class="sub"> · no notes</span>`}</div>` + notes.map((a) =>
+      `<div class="note" data-ref="ann:${a.id}"><b>${a.id}</b>${place(a) ? `<span class="tag">${place(a)}</span>` : "<span></span>"}<span class="tag">${swatch(a)}${esc(a.colour)}</span><span class="text">${esc(a.note)}</span></div>`
     ).join("");
     pages.appendChild(list);
   });
+  markPage();
+}
+
+// The page at the top third of the paper pane, for the bar above it.
+function markPage() {
+  if (!view) return;
+  const pane = $("paperScroll"), at = pane.scrollTop + pane.clientHeight / 3;
+  let n = 1;
+  document.querySelectorAll(".page").forEach((el, i) => { if (el.offsetTop <= at) n = i + 1; });
+  $("pageNow").textContent = `Page ${n} of ${view.paper.pages.length}`;
 }
 
 function showBox(page, x0, y0, x1, y1) {
   const el = $(`page-${page}`);
   if (!el) return;
   const pg = view.paper.pages[page - 1];
-  const right = $("right");
+  const right = $("paperScroll");   // positioned, so a page's offsetTop is measured from it
   const top = el.offsetTop + (y0 / pg.height) * el.clientHeight - right.clientHeight * 0.3;
   right.scrollTo({top: Math.max(0, top), behavior: "smooth"});
   const pad = 4;
@@ -248,234 +415,472 @@ function follow(ref) {
   }
 }
 
-document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-ref]");
-  if (el) { e.preventDefault(); follow(el.dataset.ref); }
-});
-
-/* ---------- interview pane ---------- */
-
-function questionCount() {
-  return view.session.turns.filter((t) => t.role === "claude" && t.fields.kind === "question" && !t.fields.follow_up).length;
+// The section a spot of the paper sits in: the last numbered heading before it, reading down each
+// column in turn. Empty if no heading comes before it.
+function sectionAt(page, x, y) {
+  const order = (p, px, py) => p * 1e6 + (px < view.paper.pages[p - 1].width / 2 ? 0 : 1e5) + py;
+  const here = order(page, x, y) + 1;
+  let best = "", bestAt = -1;
+  for (const [name, box] of Object.entries(view.paper.anchors)) {
+    if (!/^(section|appendix) /.test(name)) continue;
+    const at = order(box[0], box[1], box[2]);
+    if (at <= here && at > bestAt) { best = name; bestAt = at; }
+  }
+  if (!best) return "";
+  const [kind, label] = best.split(" ");
+  return `${kind[0].toUpperCase()}${kind.slice(1)} ${label.toUpperCase()}`;
 }
 
-function lastClaude() {
-  const turns = view.session.turns;
-  for (let i = turns.length - 1; i >= 0; i--) if (turns[i].role === "claude") return turns[i].fields;
-  return null;
+// Where an entry's notes sit in the paper, as references the reviewer can take as its location.
+function placesOf(e) {
+  const out = [];
+  for (const id of e.sources || []) {
+    const a = view.paper.annotations.find((x) => x.id === id);
+    if (!a) continue;
+    const float = /^(FIGURE|TABLE) (\S+)$/.exec(a.anchor || "");
+    if (float && view.paper.anchors[`${float[1]} ${float[2]}`.toLowerCase()]) out.push(`${float[1][0]}${float[1].slice(1).toLowerCase()} ${float[2]}`);
+    const line = a.lines && view.paper.lines[a.lines[0]];
+    const section = line ? sectionAt(line[0], line[1], line[2]) : sectionAt(a.page, a.bbox[0], a.bbox[1]);
+    if (section) out.push(section);
+    if (line) out.push(`L${a.lines[0]}`);
+  }
+  return [...new Set(out)].slice(0, 5);
 }
+
+/* ---------- rail ---------- */
+
+function drawRail() {
+  const s = view.session, now = stepAt(stepNow());
+  $("flow").innerHTML = STEPS.map(([k, name], i) => {
+    const mark = `<span class="mark">${i < now || (k === "final" && s.final) ? "✓" : i === now ? "●" : ""}</span>`;
+    return i > now ? `<span class="step later">${mark}${name}</span>`
+      : `<a href="#" class="step${i === now ? " current" : ""}${k === sel ? " sel" : ""}" data-step="${k}">${mark}${name}</a>`;
+  }).join("");
+  // A candidate that has not been written out yet is not flagged; the order is set with the arrows.
+  const arrows = (e) => (e.dropped || e.kind === "observation" || live(e.kind).length < 2 ? ""
+    : `<span class="arrows"><span data-shift="-1" data-id="${e.id}" title="Move up">↑</span><span data-shift="1" data-id="${e.id}" title="Move down">↓</span></span>`);
+  const row = (e) => `<a href="#" class="irow${e.id === openId ? " sel" : ""}" data-entry="${e.id}"><b>${e.id}</b><span>${esc(e.claim || "")}${e.kind === "observation" ? ` ${CLAUDES}` : ""}${needs(e) && e.body ? ` <span class="flag">${needs(e)}</span>` : ""}</span>${arrows(e)}</a>`;
+  const group = (label, list, sub = "") => `<div class="label">${label}${sub ? `<span class="sub"> · ${sub}</span>` : ""}</div>${list.map(row).join("") || `<div class="hint">none yet</div>`}`;
+  const order = live("weakness").length > 1 ? (s.ranked ? "most severe first" : "not ordered yet") : "";
+  const dropped = entries().filter((e) => e.dropped);
+  // The same order as the review form: summary, strengths, weaknesses, comments.
+  const summary = `<div class="label">Summary</div>` + (s.summary.trim() && now >= stepAt("summary")
+    ? `<a href="#" class="irow${sel === "summary" && !openId ? " sel" : ""}" data-step="summary"><b></b><span>${esc(clip(s.summary.trim(), 70))}</span></a>`
+    : `<div class="hint">not written yet</div>`);
+  $("index").innerHTML = summary + group("Strengths", live("strength")) + group("Weaknesses", live("weakness"), order) + group("Comments", live("comment"))
+    + (live("observation").length ? group("Claude's observations", live("observation")) : "")
+    + (dropped.length ? fold("dropped", `Dropped (${dropped.length})`, dropped.map(row).join(""), "") : "");
+}
+
+/* ---------- cards ---------- */
+
+// One entry as it stands in the index, worded as it will appear in the review. A click opens it.
+function bulletRow(id) {
+  const e = entryOf(id);
+  if (!e) return "";
+  return `<div class="bullet${e.dropped ? " dropped" : ""}" data-entry="${e.id}"><b>${e.id}</b><span>${inline(e.bullet || e.claim || "")}${
+    e.dropped ? ` <span class="tag">dropped</span>` : ""}${needs(e) ? ` <span class="flag">${needs(e)}</span>` : ""}</span></div>`;
+}
+
+const idTag = (a) => (a.id ? `<b>${inline(a.id)}</b> ${(entryOf(a.id) || {}).kind === "observation" ? CLAUDES + " " : ""}` : "");
+
+// The register entry behind a bias question, with where it comes from. Shown only on request.
+function why(a, key) {
+  if (!a.register) return "";
+  const r = view.paper.register[a.register];
+  if (!r) return fold(`${key}-why`, "Why is this asked?", `<p>Register entry ${esc(a.register)}.</p>`);
+  const sources = (r.sources || []).map((x) => (/^https?:\/\//.test(x.url || "")
+    ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.label)}</a>` : esc(x.label))).join("; ");
+  return fold(`${key}-why`, "Why is this asked?", `<p><b>${esc(a.register)}: ${esc(r.title)}.</b> ${esc(r.how || "")}</p>
+    ${r.signal ? `<p>What set it off: ${esc(r.signal)}</p>` : ""}
+    <p>Source: ${sources || "your bias register"} <span class="hint">(entry ${esc(a.register)} in reviewing/BIASES.md)</span></p>`);
+}
+
+// One thing the reviewer is asked. Once it is settled, only the question and what became of it stay.
+function askBlock(a, n, key, settled = "") {
+  const paper = (a.paper ? md(a.paper) : "") + (a.guide ? `<p class="hint">A complete answer covers: ${inline(a.guide)}</p>` : "");
+  const behind = settled ? "" : `${a.notes ? `<div class="notes"><div class="label">From your notes</div>${md(a.notes)}</div>` : ""}
+    ${paper ? fold(`${key}-paper`, "From the paper", paper) : ""}${why(a, key)}`;
+  return `<div class="ask${settled ? " done" : ""}"><span class="num">${n + 1}</span><div><div class="q">${idTag(a)}${inline(a.question)}${
+    settled ? ` <span class="tag">${esc(settled)}</span>` : ""}</div>${behind}</div></div>`;
+}
+
+const asksOf = (f, key, settled = () => "") => (f.asks || []).map((a, n) => askBlock(a, n, `${key}-${n}`, settled(a))).join("");
+const filed = (f) => (f.message ? `<div class="hint">${md(f.message)}</div>` : "");
+const changes = (f) => ((f.plan || []).length ? `<div class="label">What changed</div><ul class="plan">${f.plan.map((p) =>
+  `<li><b>${/^\d+$/.test(p.target) ? "Sentence " + p.target : inline(p.target)}</b> <span class="tag">${esc(p.action || "")}</span>${p.because ? ` “${inline(p.because)}”` : ""}</li>`).join("")}</ul>` : "");
+
+// A message of Claude's as it was sent, for the exchange behind a step.
+function claudeCard(t, i) {
+  const f = t.fields;
+  const name = {brief: "Brief", outline: (f.plan || []).length ? "Revised outline" : "Outline", summary: "Proposed summary", end: "Interview finished"}[f.kind]
+    || (f.follow_up ? "Follow-up question" : "Question");
+  const head = `<b>${name}</b>` + (f.sources || []).map((s) => `<a href="#" class="tag" data-ref="ann:${esc(s)}">${esc(s)}</a>`).join("");
+  const sentences = (f.sentences || []).length ? `<ol>${f.sentences.map((s) => `<li>${inline(s.text)}</li>`).join("")}</ol>` : "";
+  const bullets = f.kind === "outline" ? (f.entries || []).map((p) => bulletRow(p.id)).join("") : "";
+  // Sessions from the earlier version list their points as items.
+  const items = (f.items || []).length ? `<ul>${f.items.map((it) => `<li><b>${esc(it.id)}</b> ${inline(it.text)}</li>`).join("")}</ul>` : "";
+  return `<div class="card claude"><div class="head">${head}</div>${asksOf(f, `t${i}`)}${md(f.message || "")}${sentences}${bullets}${items}${changes(f)}</div>`;
+}
+
+function reviewerCard(t) {
+  const tags = [(!t.text && EMPTY_TAG[t.kind]) || TURN_TAG[t.kind] || t.kind, t.action, ...Object.entries(t.decisions || {}).map(([k, v]) => `${k} ${v}`)]
+    .filter(Boolean).map((x) => `<span class="tag">${esc(x.replace(/_/g, " "))}</span>`).join("");
+  return tags || t.text ? `<div class="card mine"><div class="head">${tags}</div>${linkify(esc(t.text || ""))}</div>` : "";
+}
+
+const card = (t, i) => (t.role === "claude" ? claudeCard(t, i) : reviewerCard(t));
+const copyBtn = (text, label) => { copyables.push(text); return `<button class="small" data-copy="${copyables.length - 1}">${label}</button>`; };
+// The messages of a step, each with its place in the record.
+const turnsOf = (step) => view.session.turns.map((t, i) => [t, i]).filter(([t]) => (t.section === "new" ? "brief" : t.section) === step);
+
+// The step that is open, as it stands now: what is asked, or the section as it will appear.
+// Earlier messages are not repeated here; they are in the exchange, folded away below.
+function nowCards(step) {
+  const s = view.session, claude = turnsOf(step).filter(([t]) => t.role === "claude");
+  if (!claude.length) return "";
+  const [last, at] = claude[claude.length - 1], f = last.fields;
+  if (step === "brief") return claudeCard(last, at);
+  if (!SECTIONS.includes(step)) return (f.plan || []).length ? `<div class="card claude">${changes(f)}${filed(f)}</div>` : "";
+  const asked = claude.findLast(([t]) => t.fields.kind === "question");
+  if (s.phase === "ask") {
+    // The questions stay in view. A change made to one entry meanwhile is reported under them.
+    const q = asked ? `<div class="card claude">${asked[0].fields.follow_up ? `<div class="head"><b>One more question</b></div>` : ""}${
+      asksOf(asked[0].fields, `t${asked[1]}`) || md(asked[0].fields.message || "")}${(asked[0].fields.asks || []).length ? filed(asked[0].fields) : ""}</div>` : "";
+    return q + (asked && last !== asked[0] && (f.plan || []).length ? `<div class="card claude">${changes(f)}${filed(f)}</div>` : "");
+  }
+  const kind = SECTION_KIND[step];
+  if (step === "summary") return `<div class="card claude"><div class="head"><b>Summary</b><span id="wc"></span></div>
+    <textarea id="para"></textarea>${changes(f)}${filed(f)}</div>`;
+  if (kind) return `<div class="card claude"><div class="head"><b>${STEP_NAME[step]} as they stand</b><span>click one to edit it</span></div>
+    ${[...live(kind), ...(step === "weaknesses" ? live("observation") : [])].map((e) => bulletRow(e.id)).join("") || `<span class="hint">None.</span>`}
+    ${asksOf(f, `t${at}`)}${changes(f)}${filed(f)}</div>`;
+  // The bias test: its questions stay in view, each marked once the reviewer's answer has settled it.
+  const plans = claude.filter(([, i]) => asked && i > asked[1]).flatMap(([t]) => t.fields.plan || []);
+  const settled = (a) => (a.id ? (plans.findLast((p) => p.target.toUpperCase() === a.id.toUpperCase()) || {}).action || "" : s.ranked ? "ordered" : "");
+  const asks = asked ? asked[0].fields.asks || [] : [];
+  const open = asks.filter((a) => !settled(a)).length;
+  return `<div class="card claude"><div class="head"><b>Bias test</b><span>${asks.length ? `${asks.length - open} of ${asks.length} settled` : "no questions"}</span></div>
+    ${asked ? asksOf(asked[0].fields, `t${asked[1]}`, settled) : ""}${last !== (asked || [])[0] ? asksOf(f, `t${at}`) + changes(f) + filed(f) : filed(f)}</div>`;
+}
+
+// What a finished section put into the review. It stays open to hand edits.
+function resultCard(step) {
+  if (step === "summary") return `<div class="card"><div class="head"><b>Summary in the review</b><span id="wc"></span></div>
+    <textarea id="para"></textarea><div class="row" style="margin-top:8px"><button class="small" id="saveSummary">Save</button></div></div>`;
+  const kind = SECTION_KIND[step];
+  return kind ? `<div class="card"><div class="head"><b>${STEP_NAME[step]} in the review</b><span>click one to edit it</span></div>
+    ${live(kind).map((e) => bulletRow(e.id)).join("") || `<span class="hint">None.</span>`}</div>` : "";
+}
+
+// The exchange behind a step: every message as it was sent. Folded away; the record holds it too.
+function exchange(step) {
+  const turns = turnsOf(step).filter(([t]) => step !== "brief" || t.role !== "claude");
+  const cards = turns.map(([t, i]) => card(t, i)).filter(Boolean);
+  return cards.length ? fold(`exchange-${step}`, `The exchange so far (${cards.length} ${cards.length === 1 ? "message" : "messages"})`, cards.join(""), "history") : "";
+}
+
+// The draft: one block per form field, each with a button that copies its Markdown source.
+function draftCards() {
+  if (!view.session.draft) return "";
+  const [review, trace] = splitDraft(view.session.draft);
+  const fields = review.split(/^## /m);
+  const title = fields.shift().replace(/^#\s*/, "").trim();
+  let body = "";
+  for (const field of fields) {
+    const nl = field.indexOf("\n");
+    const name = (nl < 0 ? field : field.slice(0, nl)).trim();
+    const text = nl < 0 ? "" : field.slice(nl + 1).trim();
+    body += `<div class="field"><div class="fieldhead"><b>${esc(name)}</b>${copyBtn(text, "Copy Markdown")}</div>${md(text)}</div>`;
+  }
+  return `<div class="card" id="draftCard"><div class="head"><b>Draft review</b><span>${esc(title)}</span>${copyBtn(review, "Copy whole review")}</div>${body || md(review)}</div>`
+    + (trace ? `<div class="card">${fold("trace", "For you only: where each point came from", `<div class="row" style="margin:8px 0">${copyBtn(trace, "Copy Markdown")}</div>${md(trace)}`, "")}</div>` : "");
+}
+
+// The last step: the review as it went into the form, kept as an example for later reviews.
+function finalCard() {
+  const reminders = (view.paper.score_reminders || []).map((r) => `<p><b>${esc(r.title)}.</b> ${esc(r.question)}</p>`).join("");
+  return `<div class="card"><div class="head"><b>The review as you submitted it</b></div>
+    <textarea id="finalText" style="min-height:220px"></textarea>
+    ${reminders ? `<details class="front" open style="margin-top:8px"><summary>When you set your scores</summary>${reminders}</details>` : ""}
+    <div class="row" style="margin-top:8px"><button class="primary" id="finalBtn">Save as submitted</button>
+    <span class="hint">${view.session.final ? "Saved. A copy is kept as an example for later reviews." : "Paste or edit the review as it went into the form."}</span></div></div>`;
+}
+
+// The check against the guidelines: one finding for each thing not met, with a way to act on it.
+function checkCard() {
+  const s = view.session;
+  if (!s.check) return "";
+  const body = !(s.findings || []).length ? md(s.check) : s.findings.map((f, n) => {
+    const e = entryOf(f.target.toUpperCase()), summary = /^summary$/i.test(f.target);
+    const basis = [...(f.sources || []).map((x) => `<a href="#" class="tag" data-ref="ann:${esc(x)}">${esc(x)}</a>`),
+      f.where ? `<span class="hint">${inline(f.where)}</span>` : ""].join(" ");
+    const buttons = f.status ? `<span class="tag">${f.status === "used" ? "taken" : "set aside"}</span>`
+      : `${f.suggestion && (e || summary) ? `<button class="small" data-finding="${n}" data-v="use">Use this</button>` : ""}
+        ${e ? `<button class="small" data-entry="${e.id}">Edit ${e.id}</button>` : summary ? `<button class="small" data-step="summary">Edit the summary</button>` : ""}
+        <button class="small" data-finding="${n}" data-v="dismiss">Set aside</button>`;
+    return `<div class="finding${f.status ? " done" : ""}"><div><b>${inline(f.target)}</b> ${inline(f.problem)}</div>
+      ${f.suggestion && !f.status ? `<div class="label">Suggested, from your notes</div><div class="suggest">${md(f.suggestion)}</div>${basis.trim() ? `<div class="row">${basis}</div>` : ""}` : ""}
+      <div class="row">${buttons}</div></div>`;
+  }).join("");
+  return `<div class="card" id="checkCard"><div class="head"><b>Check against your guidelines</b>${copyBtn(s.check, "Copy Markdown")}</div>${body}</div>`;
+}
+
+// The open entry: its text as it will appear in the review, which the reviewer edits directly,
+// then what it rests on. The parts the text was built from are folded away.
+function editorCard() {
+  const e = entryOf(openId), lacks = e.dropped ? [] : e.gaps || [];
+  const note = (id) => {
+    const a = view.paper.annotations.find((x) => x.id === id) || {}, under = a.text || a.anchor;
+    return `<div class="src"><a href="#" class="tag" data-ref="ann:${esc(id)}">${esc(id)}</a><div>${esc(a.note || "")}${
+      under ? `<div class="under">“${esc(clip(under, 200))}”</div>` : ""}</div></div>`;
+  };
+  const places = lacks.includes("where") ? placesOf(e) : [];
+  const still = e.dropped ? `<div class="hint">Dropped: it is left out of the review.</div>` : !lacks.length ? "" : `<div class="still">${
+    lacks.includes("where") ? `No location yet.${places.length ? " Take one from your notes: " + places.map((p) => `<button class="small" data-place="${esc(p)}">${esc(p)}</button>`).join(" ") : ""} ` : ""}${
+    lacks.includes("resolve") ? "No fix yet: say or write what would resolve it." : ""}</div>`;
+  const fields = PARTS[e.kind].map(([k, label]) => {
+    const v = esc(e[k] || "");
+    const input = k === "claim" ? `<input type="text" data-part="claim" value="${v}">`
+      : k === "where" ? `<input type="text" data-part="where" value="${v}" placeholder="e.g. Table 2; L425–427">
+        <label class="hint"><input type="checkbox" data-part="nowhere"${e.nowhere ? " checked" : ""}> No single location</label>`
+      : `<textarea data-part="${k}" rows="3">${v}</textarea>`;
+    return `<div class="part"><div class="label">${label}</div>${input}</div>`;
+  }).join("");
+  const own = e.text ? `<div class="hint">This is your own wording, so the parts no longer change it. <a href="#" data-rebuild>Build it from the parts again</a></div>` : "";
+  return `<div class="card"><textarea id="entryText" data-part="text" placeholder="The point as it will appear in the review">${esc(e.wording || "")}</textarea>
+    ${own}${still}
+    ${(e.sources || []).length ? `<div class="label">From your notes</div>${e.sources.map(note).join("")}` : ""}
+    ${e.said ? `<div class="label">Your words</div><div>“${esc(e.said)}”${e.said_ok === false ? ` <span class="flag">not found word for word in your answers</span>` : ""}</div>` : ""}
+    ${(e.was || []).length ? `<div class="hint">Was ${esc(e.was.join(", "))}.</div>` : ""}
+    ${fold(`parts-${e.id}`, "Parts", fields)}</div>`;
+}
+
+/* ---------- middle pane ---------- */
 
 function drawLog() {
-  const log = $("log");
-  const parts = [];
-  let q = 0;
-  view.session.turns.forEach((t, i) => {
-    if (t.role === "claude") {
-      const f = t.fields;
-      let head = "";
-      if (f.kind === "brief") head = "<b>Brief</b>";
-      else if (f.kind === "summary") head = "<b>Proposed summary</b>";
-      else if (f.kind === "end") head = "<b>Interview finished</b>";
-      else {
-        if (!f.follow_up) q += 1;
-        head = `<b>${f.follow_up ? "Follow-up" : "Q" + q}</b>`;
-        if (f.round && !f.follow_up) head += `<span>${ROUNDS[f.round]}</span>`;
-        if (f.title && !f.follow_up) head += `<span>· ${esc(f.title)}</span>`;
-        for (const s of f.sources || []) head += `<a href="#" class="tag" data-ref="ann:${s}">${s}</a>`;
-      }
-      const body = md(f.message);
-      // Which register entries triggered this question: shown only on request.
-      const regName = (id) => `${esc(id)}${view.paper.register[id] ? ": " + esc(view.paper.register[id].title) : ""}`;
-      const reasons = [];
-      if (f.register) reasons.push(`Register entry ${regName(f.register)}.`);
-      for (const it of f.items || []) if (it.register) reasons.push(`${esc(it.id)}: register entry ${regName(it.register)}.`);
-      if (reasons.length) head += `<span class="why" data-why="${i}">Why is this asked?</span>`;
-      const why = reasons.length ? `<div class="whybox" id="why-${i}" hidden>${reasons.join("<br>")}</div>` : "";
-      parts.push(`<div class="card"><div class="head">${head}</div>${body}${why}</div>`);
-    } else {
-      const tags = [];
-      if (t.kind === "brief") tags.push("corrections to the brief");
-      if (t.kind === "summary_accept") tags.push("summary accepted");
-      if (t.kind === "summary_change") tags.push("change requested");
-      if (t.kind === "wrap_up") tags.push("wrap up");
-      for (const [k, v] of Object.entries(t.decisions || {})) tags.push(`${k} ${v}`);
-      if (t.action === "skip") tags.push("skipped");
-      if (t.action === "you_decide") tags.push("you decide the wording");
-      const head = tags.length ? `<div class="head">${tags.map((x) => `<span class="tag">${esc(x)}</span>`).join("")}</div>` : "";
-      if (t.text || tags.length) parts.push(`<div class="card mine">${head}${esc(t.text || "")}</div>`);
-    }
-  });
-  // The draft: one block per form field, each with a button that copies its Markdown source.
+  const s = view.session;
   copyables = [];
-  const copyBtn = (text, label) => { copyables.push(text); return `<button class="small" data-copy="${copyables.length - 1}">${label}</button>`; };
-  if (view.session.draft) {
-    const [review, notes] = splitDraft(view.session.draft);
-    const fields = review.split(/^## /m);
-    const title = fields.shift().replace(/^#\s*/, "").trim();
-    let body = "";
-    for (const field of fields) {
-      const nl = field.indexOf("\n");
-      const name = (nl < 0 ? field : field.slice(0, nl)).trim();
-      const text = nl < 0 ? "" : field.slice(nl + 1).trim();
-      body += `<div class="field"><div class="fieldhead"><b>${esc(name)}</b>${copyBtn(text, "Copy Markdown")}</div>${md(text)}</div>`;
-    }
-    parts.push(`<div class="card" id="draftCard"><div class="head"><b>Draft review</b><span>${esc(title)}</span>${copyBtn(review, "Copy whole review")}</div>
-      <div class="hint">Saved to ${esc(view.files.review_text)}</div>${body || md(review)}</div>`);
-    if (notes) parts.push(`<div class="card"><div class="head"><b>For you only</b><span>changes from the notes, Claude's additions, open items, source trace</span>${copyBtn(notes, "Copy Markdown")}</div>
-      <div class="hint">Saved to ${esc(view.files.trace)}. Not for the review form.</div>${md(notes)}</div>`);
-  }
-  if (view.session.check) {
-    parts.push(`<div class="card"><div class="head"><b>Check</b>${copyBtn(view.session.check, "Copy Markdown")}</div>
-      <div class="hint">Saved to ${esc(view.files.check)}</div>${md(view.session.check)}</div>`);
-  }
-  log.innerHTML = parts.join("");
-  log.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
-    const label = b.textContent;
-    try { await navigator.clipboard.writeText(copyables[+b.dataset.copy]); b.textContent = "Copied"; }
-    catch (_) { b.textContent = "Copy failed"; }
-    setTimeout(() => { b.textContent = label; }, 1500);
-  }));
-  log.querySelectorAll("[data-why]").forEach((el) => el.addEventListener("click", () => { $(`why-${el.dataset.why}`).hidden = false; }));
+  const past = stepAt(sel) < stepAt(stepNow());
+  const parts = s.legacy ? [...s.turns.map(card), draftCards(), checkCard()]
+    : openId ? [editorCard()]
+    : [past && sel !== "brief" ? resultCard(sel) : nowCards(sel),
+       sel === "draft" ? checkCard() : "", sel === "final" ? draftCards() + finalCard() : "", exchange(sel)];
+  $("log").innerHTML = parts.join("");
+  editable("para", "summary", s.summary);
+  editable("finalText", "final", s.final || splitDraft(s.draft)[0]);
+  if ($("finalBtn")) $("finalBtn").onclick = () => post("/api/final", {text: $("finalText").value});
+  if ($("saveSummary")) $("saveSummary").onclick = () => post("/api/summary", {text: $("para").value});
 }
 
-function micRow() {
-  const supported = window.SpeechRecognition || window.webkitSpeechRecognition;
-  return `<div class="row">
-    ${supported ? `<button id="mic" title="Dictate into the text box">🎙 Dictate</button>` : ""}
-    <span class="hint" id="micHint">${supported
-      ? "Browser dictation sends audio to the browser's speech service (Chrome: Google, Safari: Apple). macOS dictation in the text box can run on-device."
-      : "This browser has no built-in dictation. macOS dictation works in the text box."}</span>
-  </div>`;
+// A text box that starts from the saved text and keeps the reviewer's edits until they are saved.
+function editable(id, key, saved) {
+  const box = $(id);
+  if (!box) return;
+  box.value = edits[key] ?? saved;
+  const count = () => { if ($("wc")) $("wc").textContent = `${box.value.trim().split(/\s+/).filter(Boolean).length} words`; };
+  count();
+  box.oninput = () => { edits[key] = box.value; count(); };
 }
+
+// A text box is as tall as its text, up to a share of the window, so the text is read without scrolling inside it.
+function grow(box) {
+  if (!box.offsetParent) return;   // folded away: sized when it is opened
+  box.style.height = "auto";
+  box.style.height = `${Math.min(box.scrollHeight + 2, innerHeight * (box.id === "say" ? 0.4 : 0.6))}px`;
+}
+const growAll = (within) => within.querySelectorAll("textarea").forEach(grow);
+
+// The box the reviewer talks or types into, with dictation and the buttons that send it.
+function sayBox(placeholder, buttons) {
+  const supported = window.SpeechRecognition || window.webkitSpeechRecognition;
+  return `<textarea id="say" placeholder="${placeholder}"></textarea>
+    <div class="row">${supported ? `<button id="mic" title="Dictate into the text box you last clicked in">🎙 Dictate</button>` : ""}<span class="hint" id="micHint"></span>${buttons}</div>`;
+}
+// One main button per state: Revise is the main one when nothing else on the screen can be.
+const changeBox = (placeholder, main) => sayBox(placeholder, `<button${main ? ` class="primary"` : ""} id="sendBtn">Revise</button>`);
+
+// The entries the open question is about, each with the buttons for its kind.
+function candidates() {
+  // From every question of the open section, so a follow-up does not hide them.
+  const asked = view.session.turns.filter((t) => t.role === "claude" && t.section === view.session.stage && t.fields.kind === "question")
+    .flatMap((t) => [...(t.fields.entries || []), ...(t.fields.asks || [])]);
+  const seen = new Set();
+  const rows = asked.map((x) => {
+    const e = x.id && entryOf(x.id);
+    if (!e || seen.has(e.id)) return "";
+    seen.add(e.id);
+    // A weakness or an observation can also become a comment; the choices stay the same after it has moved.
+    const three = /^[WO]/.test(x.id);
+    const state = e.dropped ? "drop" : three ? e.kind : "keep";
+    const buttons = (three ? [["weakness", "Weakness"], ["comment", "Comment"], ["drop", "Drop"]] : [["keep", "Keep"], ["drop", "Drop"]]).map(([v, label]) =>
+      `<button class="small${state === v ? " on" : ""}" data-pick="${e.id}" data-v="${v}">${label}</button>`).join("");
+    const more = e.kind === "observation" ? ` ${CLAUDES} <span class="hint">${inline(`${e.body || ""}${e.where ? ` (${e.where})` : ""}`)}</span>` : "";
+    return `<div class="obs"><div class="text"><b>${inline(e.id)}</b> <span class="claim" data-claim="${e.id}" title="Click to reword">${esc(e.claim || "")}</span>${more}</div>${buttons}</div>`;
+  }).join("");
+  return rows ? `<div class="points">${rows}</div>` : "";
+}
+
+function pick(id, v) {
+  const e = entryOf(id), body = {id: e.id, dropped: v === "drop"};
+  if (v !== "drop" && v !== "keep" && v !== e.kind) body.move = v;
+  post("/api/entry", body);
+}
+
+// Clicking a claim beside its buttons makes it editable in place.
+function reword(span) {
+  const e = entryOf(span.dataset.claim);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = e.claim || "";
+  span.replaceWith(input);
+  input.focus();
+  input.onkeydown = (ev) => { if (ev.key === "Escape") input.value = e.claim || ""; if (ev.key === "Enter" || ev.key === "Escape") input.blur(); };
+  input.onblur = () => { const v = input.value.trim(); if (v && v !== e.claim) post("/api/entry", {id: e.id, set: {claim: v}}); else drawComposer(); };
+}
+
+// What differs in the open entry from what is saved: its text and its parts.
+function changed() {
+  const e = entryOf(openId), set = {};
+  document.querySelectorAll("#log [data-part]").forEach((el) => {
+    const k = el.dataset.part, v = k === "nowhere" ? el.checked : el.value.trim();
+    if (v !== (k === "nowhere" ? !!e.nowhere : k === "text" ? e.wording || "" : e[k] || "")) set[k] = v;
+  });
+  return set;
+}
+
+// A hand edit of the open entry. Unsaved changes go with every action, so none is lost.
+function act(extra) {
+  const set = Object.assign(changed(), extra.set), body = Object.assign({id: entryOf(openId).id}, extra);
+  delete body.set;
+  if (Object.keys(set).length) body.set = set;
+  if (Object.keys(body).length > 1) post("/api/entry", body);
+}
+
+const reply = (body) => post("/api/reply", body, true);
+const change = (prefix, extra) => { if (unsent.trim()) reply({action: "change", text: prefix + unsent, ...extra}); };
 
 function drawComposer() {
-  const c = $("composer");
-  const stage = view.session.stage;
-  const asked = lastClaude();
+  const c = $("composer"), s = view.session, step = stepNow();
   const err = errorText ? `<div class="error">${esc(errorText)}</div>` : "";
-  if (busy) {
+  const scrolled = (c.querySelector(".points") || {}).scrollTop;
+  if (busySince) {
     c.innerHTML = `<div class="hint" id="busyLine">Claude is working…</div>`;
-    return;
-  }
-  if (view.pending) {
+  } else if (s.legacy) {
+    c.innerHTML = `<div class="hint">This interview was saved by an earlier version of Debrief and is read-only. Run with <code>--restart</code> to start a new one.</div>`;
+  } else if (openId) {
+    const e = entryOf(openId), peers = live(e.kind), at = peers.indexOf(e);
+    const canSay = !view.pending && (s.phase === "ask" || s.phase === "outline" || step === "draft" || step === "final");
+    const order = e.kind === "observation" ? "" : `<button class="small" id="upBtn" title="Move up${e.kind === "weakness" ? ": more severe" : ""}"${at < 1 ? " disabled" : ""}>↑</button>
+      <button class="small" id="downBtn" title="Move down${e.kind === "weakness" ? ": less severe" : ""}"${at < 0 || at === peers.length - 1 ? " disabled" : ""}>↓</button>`;
+    c.innerHTML = `${err}<div class="row"><button class="primary" id="saveBtn">Save</button>${order}
+      <select id="moveSel"><option value="">Move to…</option>${KINDS.filter(([k]) => k !== e.kind).map(([k, name]) => `<option value="${k}">${name}</option>`).join("")}</select>
+      <span class="spacer"></span><button id="dropBtn">${e.dropped ? "Restore" : "Drop"}</button></div>
+      ${canSay ? changeBox(`Or say what to change in ${e.id}, and Claude rewrites it`) : ""}`;
+    $("saveBtn").onclick = () => act({});
+    if (order) { $("upBtn").onclick = () => act({shift: -1}); $("downBtn").onclick = () => act({shift: 1}); }
+    $("moveSel").onchange = (ev) => act({move: ev.target.value});
+    $("dropBtn").onclick = () => act({dropped: !e.dropped});
+    if (canSay) $("sendBtn").onclick = () => change(`${e.id}: `);
+  } else if (sel !== step) {
+    c.innerHTML = `<div class="hint">This step is finished. The interview is at <a href="#" data-step="${step}">${STEP_NAME[step]}</a>.</div>`;
+  } else if (view.pending) {
     c.innerHTML = `${err}<div class="hint">Your last answer is saved, but Claude has not replied to it (the call failed or was interrupted).</div>
       <div class="row"><button class="primary" id="retryBtn">Ask Claude again</button></div>`;
     $("retryBtn").onclick = () => post("/api/retry", {});
-    return;
-  }
-  if (stage === "new") {
+  } else if (s.stage === "new") {
     c.innerHTML = `${err}<div class="hint">${view.paper.counts.notes} notes and ${view.paper.counts.highlights} highlights found. Claude will read the paper and your notes and come back with a brief. This takes a minute or two.</div>
+      <div class="callout"><div class="label">Before you start</div>This sends the whole paper and your notes to the model. A submission under review is confidential: continue only if your model setup is privacy-preserving and your venue allows this use.</div>
       <div class="row"><button class="primary" id="startBtn">Prepare the interview</button></div>`;
     $("startBtn").onclick = () => post("/api/start", {});
-    return;
-  }
-  if (stage === "ended" || stage === "drafted") {
-    c.innerHTML = `${err}
-      <div class="row"><button class="${stage === "ended" ? "primary" : ""}" id="draftBtn">${stage === "ended" ? "Draft the review" : "Draft again"}</button>
-      <span class="hint">Written from your answers, in your guidelines' voice. Takes a minute or two.</span></div>
-      ${stage === "drafted" ? `<div class="row"><button id="checkBtn">Check the draft against your guidelines</button>
-        <span class="hint">Optional. Runs your checklist and bias checks over the draft. Scores stay with you, in the review form.</span></div>` : ""}`;
-    $("draftBtn").onclick = () => post("/api/draft", {});
-    if ($("checkBtn")) $("checkBtn").onclick = () => post("/api/check", {});
-    return;
-  }
-
-  if (asked.kind === "summary") {
-    if (!draftText) draftText = asked.message;
-    c.innerHTML = `${err}<div class="hint">Edit the paragraph until it is yours, then accept it. <span id="wc"></span></div>
-      <textarea id="answer" style="min-height:150px"></textarea>
-      ${micRow()}
-      <div class="row"><button class="primary" id="acceptBtn">Accept summary</button>
-        <input type="text" id="changeText" placeholder="Or say what to change, e.g. shorter, mention the datasets" style="flex:1">
-        <button id="changeBtn">Ask for a change</button></div>`;
-    $("acceptBtn").onclick = () => send({action: "summary_accept"});
-    $("changeBtn").onclick = () => { const t = $("changeText").value.trim(); if (t) post("/api/reply", {text: t}, true); };
-  } else if (asked.kind === "brief") {
-    c.innerHTML = `${err}<textarea id="answer" placeholder="Corrections to the brief, or leave empty"></textarea>${micRow()}
-      <div class="row"><button class="primary" id="sendBtn">Start the interview</button></div>`;
-    $("sendBtn").onclick = () => send({});
-  } else {
+  } else if (step === "brief") {
+    c.innerHTML = err + sayBox("Corrections to the brief, or leave empty", `<button class="primary" id="sendBtn">Start the interview</button>`);
+    $("sendBtn").onclick = () => reply({text: unsent});
+  } else if (s.phase === "ask") {
     const fm = view.paper.front_matter;
-    const front = asked.summary_question ? `<details class="front"><summary>From the paper: abstract, contributions, conclusion</summary>
+    const front = step === "summary" ? `<details class="front"><summary>From the paper: abstract, contributions, conclusion</summary>
       <h5>Abstract</h5><p>${esc(fm.abstract)}</p><h5>Contributions</h5><p>${esc(fm.contributions)}</p><h5>Conclusion</h5><p>${esc(fm.conclusion)}</p></details>` : "";
-    const CHOICES = {point: [["weakness", "Weakness"], ["comment", "Comment"], ["dropped", "Drop"]],
-                     observation: [["accepted", "Accept"], ["dropped", "Drop"]],
-                     strength: [["strength", "Keep"], ["dropped", "Drop"]]};
-    const items = (asked.items || []).map((it) =>
-      `<div class="obs"><div class="text"><b>${esc(it.id)}</b>${it.type === "observation" ? ' <span class="tag">Claude\'s</span>' : ""} ${inline(it.text)}</div>
-        ${(CHOICES[it.type] || CHOICES.point).map(([v, label]) =>
-          `<button class="small${decisions[it.id] === v ? " on" : ""}" data-item="${esc(it.id)}" data-v="${v}">${label}</button>`).join("")}</div>`).join("");
-    const points = items ? `<div class="points">${items}</div>` : "";
-    c.innerHTML = `${err}${front}${points}<textarea id="answer" placeholder="Talk it through: your answer, in your words"></textarea>${micRow()}
-      <div class="row"><span class="spacer"></span>
-        <button class="small" id="skipBtn">Skip</button>
-        <button class="small" id="decideBtn">You decide the wording</button>
-        <button class="small" id="wrapBtn">Wrap up</button>
-        <button class="primary" id="sendBtn">Send</button></div>`;
-    c.querySelectorAll("[data-item]").forEach((b) => b.addEventListener("click", () => {
-      const id = b.dataset.item;
-      if (decisions[id] === b.dataset.v) delete decisions[id]; else decisions[id] = b.dataset.v;
-      c.querySelectorAll(`[data-item="${id}"]`).forEach((x) => x.classList.toggle("on", decisions[id] === x.dataset.v));
-    }));
-    $("sendBtn").onclick = () => send({decisions});
-    $("skipBtn").onclick = () => send({action: "skip"}, true);
-    $("decideBtn").onclick = () => send({action: "you_decide", decisions});
-    $("wrapBtn").onclick = () => { if (confirm("End the interview here?")) send({action: "wrap_up"}); };
+    c.innerHTML = err + front + candidates() + sayBox("Talk it through: your answer, in your words",
+      `<button class="small" id="skipBtn">Skip this section</button><button class="primary" id="sendBtn">Send</button>`);
+    $("sendBtn").onclick = () => reply({text: unsent});
+    $("skipBtn").onclick = () => { if (confirm(`Skip this section (${STEP_NAME[step]}) and move on?`)) reply({action: "skip"}); };
+  } else if (s.phase === "outline") {
+    // What is still open is named beside the button, and the reviewer may accept the section as it is.
+    const open = openItems(step), soft = open.gaps.length > 0, name = STEP_NAME[step].toLowerCase();
+    c.innerHTML = `${err}${open.undecided.length ? open.html : ""}<div class="row"><button${open.undecided.length ? " disabled" : soft ? "" : ` class="primary"`} id="acceptBtn">${soft ? `Accept ${name} anyway` : `Accept ${name}`}</button>
+      ${soft && !open.undecided.length ? `<span class="hint">${inline(open.gaps.join(" "))}</span>` : ""}</div>
+      ${changeBox(step === "summary" ? "Or say what to change, e.g. drop the third sentence" : "Or say what to change, or answer what is asked above", open.html !== "")}`;
+    $("acceptBtn").onclick = () => reply({action: "accept", ...(step === "summary" ? {text: $("para").value} : {}), ...(soft ? {force: true} : {})});
+    // A change to the summary is made to the paragraph as it stands in the box, hand edits included.
+    $("sendBtn").onclick = () => change("", step === "summary" ? {summary: $("para").value} : {});
+  } else {
+    // Draft and final: the draft is assembled by the server from the summary and the index.
+    const open = openItems(step), drafted = step === "final";
+    c.innerHTML = `${err}${open.html}
+      ${drafted ? "" : `<div class="row"><button class="${s.check ? "" : "primary"}" id="checkBtn">${s.check ? "Check again" : "Check against your guidelines"}</button>
+        <button class="${s.check ? "primary" : ""}" id="draftBtn">${open.html ? "Draft anyway" : "Draft the review"}</button></div>`}
+      ${changeBox("Or say what to change, e.g. W2: soften the wording")}`;
+    if (!drafted) {
+      $("draftBtn").onclick = () => post("/api/draft", open.html ? {force: true} : {});
+      $("checkBtn").onclick = () => post("/api/check", {});
+    }
+    $("sendBtn").onclick = () => change("");
   }
-
-  const answer = $("answer");
-  if (answer) {
-    answer.value = draftText;
-    const count = () => { if ($("wc")) $("wc").textContent = `${answer.value.trim().split(/\s+/).filter(Boolean).length} words`; };
-    count();
-    answer.addEventListener("input", () => { draftText = answer.value; keepDraft(); count(); });
-    answer.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); ($("sendBtn") || $("acceptBtn")).click(); } });
-    answer.focus();
+  if (c.querySelector(".points")) c.querySelector(".points").scrollTop = scrolled || 0;
+  const say = $("say");
+  if (say) {
+    say.value = unsent;
+    say.oninput = () => { unsent = say.value; keepUnsent(); };
+    say.onkeydown = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); $("sendBtn").click(); } };
+    if (!openId) say.focus();
   }
   if ($("mic")) $("mic").onclick = toggleMic;
+  growAll(c);
 }
 
-function send(extra, withoutText) {
-  const text = withoutText ? "" : draftText;
-  post("/api/reply", Object.assign({text}, extra), true);
-}
-
-async function post(path, body, clearOnSuccess) {
+// Hand edits and the draft are answered at once; everything else waits for the model.
+async function post(path, body, clear) {
+  if (busy) return;
   stopMic();
-  busy = true; busySince = Date.now(); errorText = "";
-  drawComposer();
+  busy = true; errorText = "";
+  if (!/entry|summary|draft|final|finding/.test(path)) { busySince = Date.now(); drawComposer(); }
   try {
     const res = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Request failed");
     view = data;
-    if (clearOnSuccess) { draftText = ""; decisions = {}; keepDraft(); }
+    if (clear) { unsent = ""; keepUnsent(); openId = null; sel = stepNow(); }
+    if (clear || path === "/api/summary" || path === "/api/finding") delete edits.summary;
+    if (path === "/api/final") delete edits.final;
+    if (openId) openId = entryOf(openId).id;   // a moved entry has a new ID
   } catch (e) {
     // An answer is saved by the server before the model is asked, so reload to see what was stored.
     let stored = false;
-    try { view = await (await fetch("/api/state")).json(); stored = view.pending; } catch (_) {}
-    if (stored && clearOnSuccess) { draftText = ""; decisions = {}; keepDraft(); }
-    errorText = stored ? e.message : `${e.message} Your text is still in the box.`;
+    try { view = await (await fetch("/api/state")).json(); stored = clear && view.pending; } catch (_) {}
+    if (stored) { unsent = ""; keepUnsent(); openId = null; sel = stepNow(); }
+    errorText = stored || !clear ? e.message : `${e.message} Your text is still in the box.`;
   }
-  busy = false;
+  busy = false; busySince = 0;
   draw();
 }
 
 setInterval(() => {
   const el = $("busyLine");
-  if (busy && el) el.textContent = `Claude is working… ${Math.round((Date.now() - busySince) / 1000)} s`;
+  if (el) el.textContent = `Claude is working… ${Math.round((Date.now() - busySince) / 1000)} s`;
 }, 1000);
 
 /* ---------- unsent text survives a reload ---------- */
 
-const draftKey = () => `interview-unsent:${view ? view.paper.name : ""}`;
-function keepDraft() { try { localStorage.setItem(draftKey(), draftText); } catch (_) {} }
-function recallDraft() { try { return localStorage.getItem(draftKey()) || ""; } catch (_) { return ""; } }
+const unsentKey = () => `interview-unsent:${view ? view.paper.name : ""}`;
+function keepUnsent() { try { localStorage.setItem(unsentKey(), unsent); } catch (_) {} }
+function recallUnsent() { try { return localStorage.getItem(unsentKey()) || ""; } catch (_) { return ""; } }
 
-/* ---------- dictation ---------- */
+/* ---------- dictation: into the text box the reviewer last clicked in ---------- */
 
 let recogniser = null;
 let listening = false;
+const micBox = () => document.querySelector(micSel) || $("say");
+const micNote = (text) => { if ($("micHint")) $("micHint").textContent = text; };
 function toggleMic() { listening ? stopMic() : startMic(); }
 function startMic() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -487,24 +892,26 @@ function startMic() {
   recogniser.onresult = (e) => {
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const said = e.results[i][0].transcript;
-      if (e.results[i].isFinal) {
-        draftText = (draftText && !/\s$/.test(draftText) ? draftText + " " : draftText) + said.trim();
-        const a = $("answer");
-        keepDraft();
-        if (a) { a.value = draftText; a.dispatchEvent(new Event("input")); a.scrollTop = a.scrollHeight; }
-      } else interim += said;
+      const said = e.results[i][0].transcript, box = micBox();
+      if (!e.results[i].isFinal) interim += said;
+      else if (box) {
+        box.value = (box.value && !/\s$/.test(box.value) ? box.value + " " : box.value) + said.trim();
+        box.dispatchEvent(new Event("input", {bubbles: true}));   // kept and sized like typed text
+        box.scrollTop = box.scrollHeight;
+      }
     }
-    if ($("micHint")) $("micHint").textContent = interim ? `… ${interim}` : "Listening.";
+    micNote(interim ? `… ${interim}` : "Listening.");
   };
-  recogniser.onerror = (e) => { if ($("micHint")) $("micHint").textContent = `Dictation stopped: ${e.error}`; listening = false; markMic(); };
+  recogniser.onerror = (e) => { micNote(`Dictation stopped: ${e.error}`); listening = false; markMic(); };
   recogniser.onend = () => { if (listening) { try { recogniser.start(); } catch (_) { listening = false; markMic(); } } };
   listening = true;
   recogniser.start();
   markMic();
-  if ($("micHint")) $("micHint").textContent = "Listening.";
+  micNote("Listening.");
+  track("dictate", {on: true, into: micSel});
 }
 function stopMic() {
+  if (listening) track("dictate", {on: false});
   listening = false;
   if (recogniser) { try { recogniser.stop(); } catch (_) {} }
   markMic();
@@ -512,50 +919,123 @@ function stopMic() {
 function markMic() {
   const b = $("mic");
   if (b) { b.classList.toggle("on", listening); b.textContent = listening ? "■ Stop dictation" : "🎙 Dictate"; }
+  if (!listening && $("micHint") && $("micHint").textContent.startsWith("Listening")) micNote("");
 }
+document.addEventListener("focusin", (e) => {
+  const t = e.target;
+  if (!t.matches || !t.matches("#mid textarea, #mid input[type=text]")) return;
+  micSel = t.id ? `#${t.id}` : t.dataset.part ? `#log [data-part="${t.dataset.part}"]` : "#say";
+});
 
 /* ---------- top level ---------- */
 
-function draw() {
-  if (!paperDrawn) { drawPaper(); paperDrawn = true; }
-  $("paperName").textContent = view.paper.name;
-  const asked = lastClaude();
-  const stageText = {new: "not started", ended: "interview finished", drafted: "draft ready"}[view.session.stage]
-    || (asked && asked.kind === "question" ? `question ${questionCount()} of 5` : asked ? {brief: "brief", summary: "summary"}[asked.kind] || "interview" : "");
-  $("stage").textContent = stageText;
-  drawLog();
-  drawComposer();
-  const count = view.session.turns.length + (view.session.draft ? 1 : 0) + (view.session.check ? 1 : 0);
-  if (count !== lastTurnCount) {
-    const log = $("log");
-    const cards = log.querySelectorAll(".card");
-    // When a draft exists and nothing came after it but its notes, show the draft first.
-    const last = (view.session.draft && !view.session.check && $("draftCard")) || cards[cards.length - 1];
-    if (last) log.scrollTo({top: last.offsetTop - 12, behavior: lastTurnCount < 0 ? "auto" : "smooth"});
-    if (lastTurnCount >= 0 && asked && asked.kind === "question" && (asked.sources || []).length) follow(`ann:${asked.sources[0]}`);
-    lastTurnCount = count;
+// Show a step, or an entry of the index, in the middle pane.
+function go(step, id = null) {
+  if (openId && !busySince && Object.keys(changed()).length) {
+    const drop = confirm(`Discard your unsaved changes to ${openId}?`);
+    track("discard", {entry: openId, discarded: drop});
+    if (!drop) return;
   }
+  stopMic();
+  sel = step; openId = id; micSel = "#say";
+  track("view", id ? {entry: id} : {step});
+  draw();
 }
 
-$("recordBtn").onclick = async () => {
-  $("recordText").textContent = await (await fetch("/api/record")).text();
-  $("recordPath").textContent = view.files.answers;
-  $("recordDialog").showModal();
-};
-$("recordClose").onclick = () => $("recordDialog").close();
-$("restartBtn").onclick = () => {
-  if (confirm("Discard this interview and start again? The record file will be emptied.")) { draftText = ""; lastTurnCount = -1; post("/api/restart", {}); }
-};
+// The left bar can be hidden, and the choice is remembered.
+function setRail(hidden, keep) {
+  $("app").classList.toggle("norail", hidden);
+  if (keep) { try { localStorage.setItem("interview-rail", hidden ? "hidden" : "shown"); } catch (_) {} track("rail", {hidden}); }
+}
+
+document.addEventListener("click", (e) => {
+  const on = (q) => e.target.closest(q);
+  let el;
+  if ((el = on("[data-ref]"))) { e.preventDefault(); track("link", {to: el.dataset.ref.split(":")[0]}); follow(el.dataset.ref); }
+  else if ((el = on("[data-copy]"))) copy(el);
+  else if ((el = on("[data-rail]"))) setRail(!$("app").classList.contains("norail"), true);
+  else if ((el = on("[data-shift]"))) { e.preventDefault(); post("/api/entry", {id: el.dataset.id, shift: +el.dataset.shift}); }
+  else if ((el = on("[data-pick]"))) pick(el.dataset.pick, el.dataset.v);
+  else if ((el = on("[data-claim]"))) reword(el);
+  else if ((el = on("[data-finding]"))) post("/api/finding", {n: +el.dataset.finding, action: el.dataset.v});
+  else if ((el = on("[data-place]"))) act({set: {where: el.dataset.place}});
+  else if ((el = on("[data-rebuild]"))) { e.preventDefault(); post("/api/entry", {id: entryOf(openId).id, set: {text: ""}}); }
+  else if ((el = on("[data-entry]"))) { e.preventDefault(); go(sel, el.dataset.entry); }
+  else if ((el = on("[data-step]"))) { e.preventDefault(); go(el.dataset.step); }
+});
+// A folded part the reviewer opens stays open when the pane is drawn again.
+document.addEventListener("toggle", (e) => {
+  const key = e.target.dataset && e.target.dataset.k;
+  if (!key || unfolded.has(key) === e.target.open) return;
+  e.target.open ? unfolded.add(key) : unfolded.delete(key);
+  track("fold", {key: key.replace(/^t\d+-\d+-/, ""), open: e.target.open});
+  if (e.target.open) growAll(e.target);
+}, true);
+document.addEventListener("input", (e) => { if (e.target.tagName === "TEXTAREA") grow(e.target); });
+// In the open entry, Cmd or Ctrl with Enter saves it.
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && e.target.closest && e.target.closest("#log [data-part]")) { e.preventDefault(); act({}); }
+});
+
+async function copy(button) {
+  const label = button.textContent;
+  track("copy", {what: label});
+  try { await navigator.clipboard.writeText(copyables[+button.dataset.copy]); button.textContent = "Copied"; }
+  catch (_) { button.textContent = "Copy failed"; }
+  setTimeout(() => { button.textContent = label; }, 1500);
+}
+
+function draw() {
+  const s = view.session;
+  if (!paperDrawn) { drawPaper(); paperDrawn = true; }
+  if (s.stage !== stageSeen) { stageSeen = s.stage; sel = stepNow(); openId = null; }
+  $("app").classList.toggle("legacy", !!s.legacy);
+  $("paperName").textContent = view.paper.name;
+  const e = openId && entryOf(openId);
+  const rail = `<button class="icon" data-rail title="Show or hide the steps and the index" aria-label="Show or hide the steps and the index">☰</button>`;
+  $("head").innerHTML = s.legacy ? `<b>Earlier interview</b><span class="tag">read-only</span>`
+    : e ? `${rail}<button class="small" data-step="${sel}">← ${STEP_NAME[sel]}</button><b>${e.id}</b>${e.kind === "observation" ? CLAUDES : `<span class="tag">${e.kind}</span>`}`
+    : `${rail}<b>${STEP_NAME[sel]}</b>`;
+  if (!s.legacy) drawRail();
+  drawLog();
+  drawComposer();
+  growAll($("mid"));
+
+  // Bring what is new into view: the check, the draft, or the top of the step that is open.
+  const log = $("log");
+  const now = {pane: `${sel} ${openId}`, turns: s.turns.length, check: s.check, draft: s.draft};
+  const first = !shown.pane, is = (k) => now[k] !== shown[k];
+  const target = (is("check") && $("checkCard")) || (is("draft") && $("draftCard")) || ((is("turns") || is("pane")) && log.firstElementChild);
+  if (target) log.scrollTo({top: target.offsetTop - log.offsetTop - 12, behavior: first ? "auto" : "smooth"});
+  const sources = lastClaude().sources || [];
+  if (!first && is("turns") && !view.pending && sources.length) follow(`ann:${sources[0]}`);
+  shown = now;
+}
+
+/* ---------- light and dark ---------- */
+
+// The button shows where a click leads: the moon in light, the sun in dark. A choice is remembered.
+function setTheme(theme, keep) {
+  document.documentElement.dataset.theme = theme;
+  if (keep) { try { localStorage.setItem("interview-theme", theme); } catch (_) {} track("theme", {theme}); }
+  const next = theme === "dark" ? "light" : "dark", b = $("themeBtn");
+  b.textContent = next === "dark" ? "🌙" : "☀️";
+  b.title = `Switch to ${next} theme`;
+  b.setAttribute("aria-label", b.title);
+}
+$("themeBtn").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true);
+setTheme(document.documentElement.dataset.theme);
+try { setRail(localStorage.getItem("interview-rail") === "hidden"); } catch (_) {}
+$("paperScroll").addEventListener("scroll", markPage, {passive: true});
 
 // If the page is opened or reloaded while the model is still answering, wait for it.
 async function load() {
-  const data = await (await fetch("/api/state")).json();
-  view = data;
-  if (!paperDrawn && !draftText) draftText = recallDraft();
-  if (data.busy && !busySince) busySince = Date.now();
-  busy = data.busy;
+  view = await (await fetch("/api/state")).json();
+  if (!paperDrawn) { unsent = recallUnsent(); track("load", {width: innerWidth, height: innerHeight}); }
+  busy = view.busy;
+  busySince = busy ? busySince || Date.now() : 0;
   draw();
-  if (data.busy) setTimeout(load, 3000);
+  if (busy) setTimeout(load, 3000);
 }
 load();
 </script>

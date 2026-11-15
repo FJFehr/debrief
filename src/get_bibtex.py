@@ -95,6 +95,8 @@ def extract_year_from_meta_or_text(soup: BeautifulSoup, html_text: str) -> str |
 
 def try_arxiv(url: str) -> str | None:
     m = re.search(r"arxiv\.org/(abs|pdf)/(?P<id>\d{4}\.\d{4,5}(v\d+)?)", url)
+    if not m:  # a bare ID, e.g. 2601.07296
+        m = re.fullmatch(r"(?P<id>\d{4}\.\d{4,5}(v\d+)?)", url.strip())
     if not m:
         m2 = re.search(r"arxiv\.org/(abs|pdf)/(?P<id>[a-zA-Z\-]+/\d{7}(v\d+)?)", url)
         if m2:

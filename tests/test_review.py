@@ -17,11 +17,11 @@ from src.review import (
     load_interview_prompt,
     load_review_prompt,
     needs_answers,
-    review,
+    write_prompt,
 )
 
 ANNOTATED = '⟨L1–2⟩ Some text.\n[NOTE A1 left yellow @L2: "Why?"]'
-ANSWERS = "## Q1 — Summary\nRound: 1 The idea\nSources: A1\nQuestion: What is it about?\nAnswer: It is about tools.\nDecisions: P1 weakness"
+ANSWERS = "## Summary\n\nAsked:\n1. What is it about?\nAnswer: It is about tools.\nOutlined: The paper studies tools.\nAccepted."
 
 
 @pytest.fixture(autouse=True)
@@ -67,7 +67,7 @@ def test_review_writes_prompt_file(tmp_path):
     src = tmp_path / "paper.md"
     src.write_text("## 1 Introduction\n\n⟨L1⟩ Body.", encoding="utf-8")
     out = tmp_path / "reviews" / "paper.review.md"
-    review(src, out, "colm")
+    write_prompt(load_review_prompt(src.read_text(encoding="utf-8"), "colm"), out, "Review prompt")
     assert "⟨L1⟩ Body." in out.read_text(encoding="utf-8")
 
 
@@ -84,8 +84,9 @@ def test_arr_review_needs_answers_but_others_do_not():
 
 def test_has_answers():
     assert has_answers(ANSWERS)
+    assert has_answers("## Q1 — Summary\nQuestion: What is it about?\nAnswer: It is about tools.")  # an older record
     assert not has_answers("")
-    assert not has_answers("# Interview record: foo.pdf\n\n## Brief\n\nSomething\n")
+    assert not has_answers("# Interview record: foo.pdf\n\n## Brief\n\nNo Answer: yet\n\n## Summary\n\nAsked:\n1. Why?\n")
 
 
 def test_arr_interview_prompt_is_built_from_the_reviewing_files():
@@ -95,6 +96,19 @@ def test_arr_interview_prompt_is_built_from_the_reviewing_files():
     assert f"<annotated_paper>\n{ANNOTATED}\n</annotated_paper>" in prompt
     assert "outputs/reviews/foo.answers.md" in prompt
     assert "<insert " not in prompt and ANSWERS_PATH_PLACEHOLDER not in prompt
+
+
+def test_only_the_latest_past_reviews_go_into_a_prompt(reviewing_dir, monkeypatch):
+    import os
+
+    monkeypatch.setattr(review_module, "PAST_REVIEWS_KEPT", 2)
+    for age, name in enumerate(("oldest", "middle", "newest")):
+        path = reviewing_dir / "my_reviews" / f"ACL_ARR_2026_June_{name}.md"
+        path.write_text(f"REVIEW-{name}", encoding="utf-8")
+        os.utime(path, (2_000_000_000 + age, 2_000_000_000 + age))
+    prompt = load_review_prompt(ANNOTATED, "arr", ANSWERS)
+    assert "REVIEW-newest" in prompt and "REVIEW-middle" in prompt
+    assert "REVIEW-oldest" not in prompt and "PAST-ARR-REVIEW" not in prompt
 
 
 def test_arr_review_prompt_contains_documents_record_and_voice_examples():
@@ -115,23 +129,12 @@ def test_missing_reviewing_file_stops_with_a_hint(reviewing_dir, capsys):
 
 
 def test_interview_template_and_cli_agree_on_the_record_format():
-    """The chat-mode record uses '## Q<n>' entries; the CLI looks for exactly those."""
+    """The chat-mode record holds 'Answer:' lines; the CLI looks for exactly those."""
     template = INTERVIEW_TEMPLATES["arr"].read_text(encoding="utf-8")
-    assert "\n## Q3 — " in template
-    for field in ("Round:", "Sources:", "Question:", "Answer:", "Decisions:", "## Points as decided by the reviewer"):
-        assert field in template
+    assert "\nAnswer: " in template
     drafting = REVIEW_TEMPLATES["arr"].read_text(encoding="utf-8")
-    assert "`Decisions`" in drafting and "## Points as decided by the reviewer" in drafting
-
-
-def test_drafting_prompt_carries_what_the_reviewer_changed_last_time():
-    """Rules taken from his edits to the first draft: no line numbers, no label, shorter."""
-    drafting = REVIEW_TEMPLATES["arr"].read_text(encoding="utf-8")
-    assert "Do not put line numbers in the review" in drafting
-    assert 'Do not write "To resolve:"' in drafting
-    assert "700 to 900 words" in drafting
-    assert "**Pointers left out.**" in drafting
-    assert "takes precedence" in drafting  # over the venue template, which still shows the label
+    for part in ("## Summary (approved by the reviewer)", "## Index", "### Weaknesses (most severe first)"):
+        assert part in template and part in drafting, part
 
 
 def test_arr_review_refuses_to_run_without_answers(tmp_path, monkeypatch, capsys):

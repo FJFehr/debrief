@@ -42,6 +42,9 @@ REVIEWING_FILES = {
 }
 VENUE_FILES = {"arr": "venues/ARR.md"}
 PAST_REVIEW_GLOBS = {"arr": "my_reviews/ACL_ARR_*.md"}
+# Every review saved at the end of an interview lands in my_reviews/. Only the latest go into a
+# prompt, so the prompt does not grow with each paper reviewed.
+PAST_REVIEWS_KEPT = 5
 
 TEXT_PLACEHOLDER = "<insert annotated text here>"
 ANSWERS_PLACEHOLDER = "<insert reviewer answers here>"
@@ -49,21 +52,33 @@ ANSWERS_PATH_PLACEHOLDER = "<answers file path>"
 VENUE_PLACEHOLDER = "<insert venue file here>"
 PAST_REVIEWS_PLACEHOLDER = "<insert past reviews here>"
 
-_ANSWER_ENTRY_RE = re.compile(r"^## Q\d+", re.MULTILINE)
+_ANSWER_RE = re.compile(r"^Answer:", re.MULTILINE)
 
 
-def _load_template(template_path: Path) -> str:
+PASTE = "Copy the contents and paste into Claude (claude.ai) or your local model."
+
+
+def load_template(template_path: Path) -> str:
+    """A prompt template with a place for the annotated text. Used for every prompt this repo writes."""
     if not template_path.exists():
-        print(f"Error: review template not found at {template_path}", file=sys.stderr)
+        print(f"Error: prompt template not found at {template_path}", file=sys.stderr)
         sys.exit(1)
     template = template_path.read_text(encoding="utf-8")
     if TEXT_PLACEHOLDER not in template:
         print(
-            f"Error: review template missing '{TEXT_PLACEHOLDER}' placeholder",
+            f"Error: prompt template {template_path} missing '{TEXT_PLACEHOLDER}' placeholder",
             file=sys.stderr,
         )
         sys.exit(1)
     return template
+
+
+def write_prompt(prompt: str, output_path: Path, name: str, then: str = PASTE) -> None:
+    """Write a finished prompt to a file and say what to do with it."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(prompt, encoding="utf-8")
+    print(f"✓ {name} written to {output_path}")
+    print(f"\n{then}\n")
 
 
 def _read_reviewing(relative: str) -> str:
@@ -86,7 +101,8 @@ def fill_reviewing_files(template: str, venue: str) -> str:
     if VENUE_PLACEHOLDER in template:
         template = template.replace(VENUE_PLACEHOLDER, _read_reviewing(VENUE_FILES[venue]))
     if PAST_REVIEWS_PLACEHOLDER in template:
-        paths = sorted(REVIEWING_DIR.glob(PAST_REVIEW_GLOBS.get(venue, "")))
+        found = REVIEWING_DIR.glob(PAST_REVIEW_GLOBS.get(venue, ""))
+        paths = sorted(sorted(found, key=lambda p: p.stat().st_mtime)[-PAST_REVIEWS_KEPT:])
         past = "\n\n".join(
             f'<review file="{p.name}">\n{p.read_text(encoding="utf-8").strip()}\n</review>'
             for p in paths
@@ -102,39 +118,21 @@ def needs_answers(venue: str) -> bool:
 
 
 def has_answers(answers_text: str) -> bool:
-    """True if the text holds at least one recorded interview entry (## Q1 …)."""
-    return bool(_ANSWER_ENTRY_RE.search(answers_text))
+    """True if the text holds at least one recorded answer (a line starting "Answer:")."""
+    return bool(_ANSWER_RE.search(answers_text))
 
 
 def load_review_prompt(annotated_text: str, venue: str = "colm", answers: str = "") -> str:
-    template = fill_reviewing_files(_load_template(REVIEW_TEMPLATES[venue]), venue)
+    template = fill_reviewing_files(load_template(REVIEW_TEMPLATES[venue]), venue)
     # The paper goes in last: its text is the only part not written by the reviewer.
     template = template.replace(ANSWERS_PLACEHOLDER, answers.strip())
     return template.replace(TEXT_PLACEHOLDER, annotated_text)
 
 
 def load_interview_prompt(annotated_text: str, venue: str, answers_path: Path) -> str:
-    template = fill_reviewing_files(_load_template(INTERVIEW_TEMPLATES[venue]), venue)
+    template = fill_reviewing_files(load_template(INTERVIEW_TEMPLATES[venue]), venue)
     template = template.replace(ANSWERS_PATH_PLACEHOLDER, str(answers_path))
     return template.replace(TEXT_PLACEHOLDER, annotated_text)
-
-
-def review(input_path: Path, output_path: Path, venue: str = "colm", answers: str = "") -> None:
-    annotated_text = input_path.read_text(encoding="utf-8")
-    prompt = load_review_prompt(annotated_text, venue, answers)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(prompt, encoding="utf-8")
-    print(f"✓ Review prompt written to {output_path}")
-    print("\nCopy the contents and paste into Claude (claude.ai) or your local model.\n")
-
-
-def interview(input_path: Path, output_path: Path, venue: str, answers_path: Path) -> None:
-    annotated_text = input_path.read_text(encoding="utf-8")
-    prompt = load_interview_prompt(annotated_text, venue, answers_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(prompt, encoding="utf-8")
-    print(f"✓ Interview prompt written to {output_path}")
-    print(f"\nGive it to a model and answer its questions. Your answers belong in {answers_path}.\n")
 
 
 def main() -> None:
@@ -215,10 +213,16 @@ def main() -> None:
     print(f"\n{'=' * 70}")
     print("STEP 2: GENERATE INTERVIEW PROMPT" if args.interview else "STEP 2: GENERATE REVIEW PROMPT")
     print(f"{'=' * 70}")
+    annotated_text = extracted_path.read_text(encoding="utf-8")
     if args.interview:
-        interview(extracted_path, interview_output_path, args.venue, answers_path)
+        write_prompt(
+            load_interview_prompt(annotated_text, args.venue, answers_path),
+            interview_output_path,
+            "Interview prompt",
+            f"Give it to a model and answer its questions. Your answers belong in {answers_path}.",
+        )
     else:
-        review(extracted_path, review_output_path, args.venue, answers)
+        write_prompt(load_review_prompt(annotated_text, args.venue, answers), review_output_path, "Review prompt")
 
     print(f"\n{'=' * 70}")
     print("DONE")

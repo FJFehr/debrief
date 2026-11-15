@@ -11,7 +11,11 @@ Tests marked `network` fetch from live sites and are left out of a plain
 `uv run pytest`. Run them with `uv run pytest -m network`.
 """
 
+from types import SimpleNamespace
+
 import pytest
+
+from src import get_bibtex
 from src.get_bibtex import (
     get_bibtex_from_url,
     try_arxiv,
@@ -82,8 +86,8 @@ class TestArXiv:
         assert "1706.03762" in bib, "Should contain arXiv ID"
         assert "vaswani" in bib.lower(), "Should contain Vaswani author"
 
-    def test_arxiv_bare_id(self):
-        """Test arXiv fetching with bare ID (not used in try_arxiv but for reference)."""
+    def test_arxiv_pdf_url(self):
+        """Fetch a paper from arXiv using the link to its PDF."""
         url = "https://arxiv.org/pdf/2601.07296"
         bib = try_arxiv(url)
 
@@ -176,3 +180,21 @@ class TestBibTexValidity:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.parametrize("given", ["2601.07296", " 2601.07296v2 ", "https://arxiv.org/abs/2601.07296"])
+def test_arxiv_id_with_or_without_the_address(given, monkeypatch):
+    """A bare ID is looked up like a link (the pipeline's help offers both). No network is used."""
+    asked = []
+
+    def fake_fetch(url, **kwargs):
+        asked.append(url)
+        return SimpleNamespace(text="@misc{x2026,\n  title = {T},\n}", raise_for_status=lambda: None)
+
+    monkeypatch.setattr(get_bibtex, "fetch", fake_fetch)
+    assert try_arxiv(given).startswith("@misc")
+    assert asked == [f"https://arxiv.org/bibtex/{given.strip().rsplit('/', 1)[-1]}"]
+
+
+def test_a_title_is_not_taken_for_an_arxiv_id():
+    assert try_arxiv("attention is all you need 2017.12345 or so") is None

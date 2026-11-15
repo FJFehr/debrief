@@ -7,8 +7,8 @@ Guidance for Claude Code when working in this repository.
 Debrief, a paper review assistant. It turns a PDF that the reviewer has annotated (highlights and margin notes) into a drafted review, in three steps:
 
 1. **Extraction**: the PDF becomes Markdown with every highlight and note in place.
-2. **Interview**: a browser page where a model asks the reviewer about their notes, one question at a time, and tests their points against a bias register.
-3. **Draft**: a model writes the review in the venue's form from the interview record.
+2. **Interview**: a browser page where a model asks the reviewer about their notes, following the review form section by section (summary, strengths, weaknesses, comments). It builds an index of the reviewer's points, which the reviewer can edit at any time, and tests them against a bias register.
+3. **Draft**: the app assembles the review in the venue's form from the sections the reviewer accepted. No model writes at this step.
 
 The reviewer's notes and spoken answers are the source of every judgement. The model asks, organises and rephrases; it does not supply opinions of its own.
 
@@ -41,6 +41,8 @@ An older second use, a prompt for a personal reading note with BibTeX (`uv run p
 - Each page boundary is marked: `--- Page 3 ---`.
 
 **The reviewer's words are stored as sent.** The interview record is written by the server, not the model, and answers are never tidied.
+
+**Scores stay with the reviewer.** Scores, confidence and the recommendation are set by the reviewer in the review form. They never pass through the software: it does not ask for them, suggest them or comment on them.
 
 **README style.** Short: only the wording a new reader needs, with detail left to `docs/`. Bullets lead with an emoji and a bold label. Say "paper review", not "peer review".
 

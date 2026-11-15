@@ -2,6 +2,7 @@
 name = "debrief"
 version = "0.1.0"
 description = "Debrief, a paper review assistant: turn an annotated PDF into a drafted review"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "pymupdf>=1.24",
@@ -15,6 +16,7 @@ summarise = "src.summarise:main"
 pipeline = "src.pipeline:main"
 review = "src.review:main"
 interview = "src.interview_app:main"
+stocktake = "src.usage:main"
 
 [build-system]
 requires = ["hatchling"]

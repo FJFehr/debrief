@@ -17,9 +17,9 @@ Everything in the review should serve one of these.
 ## 2. Division of work
 
 - The reviewer reads the paper, forms the judgement, and sets all scores.
-- Claude prepares from the reviewer's notes and the paper, interviews him ([INTERVIEW.md](INTERVIEW.md)), drafts the text sections from his answers, and runs the checks in section 6.
+- Claude prepares from the reviewer's notes and the paper, then interviews the reviewer one section of the review at a time ([INTERVIEW.md](INTERVIEW.md)): summary, strengths, weaknesses, comments. In each section Claude asks, writes the text from the answers, and revises it until the reviewer accepts it. Then come the bias test and, before the draft, the checks in sections 6 and 7.
 - If Claude adds a point that is not in the reviewer's notes, it marks it as its own so the reviewer can accept or drop it.
-- Claude does not propose scores unless asked. It does say when the drafted text and a score the reviewer has given do not match.
+- Scores, confidence and the recommendation are the reviewer's, set in the review form. Claude does not propose, ask about or check them. Where this file or a venue file gives a rule about a score, the rule is for the reviewer to apply.
 
 ## 3. Reading order: idea first, writing last
 
@@ -36,7 +36,19 @@ Read the whole paper before judging it, including the method sections that are h
 
 ### Summary
 
-One paragraph, 60–170 words: what the paper studies, how the method works, what it is evaluated on, the main finding. It may end with one sentence naming the paper's main contribution. No criticism here.
+One paragraph of five or six sentences, about 60 to 100 words. Each sentence has one job, in this order:
+
+1. What the paper studies.
+2. The approach it takes.
+3. How the method works.
+4. What it is evaluated on and the direction of the result, one sentence for each evaluation.
+5. The main contribution. This sentence begins "The main contribution is" and comes from what the reviewer said is new.
+
+- No figures. Results are stated as direction only: improves, similar, lower cost.
+- No amplifiers or superlatives: not "substantial", "significantly", "highest", "state of the art", "novel".
+- Names of the method and of the benchmarks only. No component models, training data or settings.
+- Only what the reviewer described, with exact names taken from the paper.
+- No criticism here.
 
 ### Strengths
 
@@ -50,7 +62,7 @@ One paragraph, 60–170 words: what the paper studies, how the method works, wha
 A point is a **weakness** if it affects whether the claims are supported or whether the contribution stands. Everything lighter is a **comment**.
 
 - Five or fewer as a guideline. Go over when there are more than five real ones; never pad, and merge related points first.
-- Ordered by importance. Say which ones determine the score.
+- Ordered by severity, most severe first.
 - Each one has:
   1. **Label:** a bold claim that reads alone ("The main comparison is not matched on training data.").
   2. **Evidence:** what the paper does and what is missing, with section, table, figure or line.
@@ -132,7 +144,8 @@ Do not use any of these as a weakness without the stated justification.
 - [ ] Summary would be recognised by the authors as their paper.
 - [ ] Every weakness has a location, a consequence and a way to resolve it.
 - [ ] Nothing in Weaknesses is minor; nothing is said twice.
-- [ ] The weaknesses that decide the score are identified.
-- [ ] Each score the reviewer has given is justified by text in the review.
+- [ ] The weaknesses are in the reviewer's order of severity, most severe first.
 - [ ] Section 6 checks done.
 - [ ] Proofread: complete sentences, complete labels, typos listed if the form asks.
+
+The reviewer's own last step, outside this checklist: set the scores in the review form, and see that each one is justified by text in the review.

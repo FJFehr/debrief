@@ -1,6 +1,6 @@
 # Review interview
 
-How a review gets written in this workspace: the reviewer brings his notes on a paper, Claude prepares, the two go through a short interview, and Claude drafts the review from the answers.
+How a review gets written in this workspace: the reviewer brings notes on a paper, Claude prepares, the two go through an interview that follows the review form, and the review is assembled from the sections the reviewer accepted.
 
 The interview exists to get the reviewer's judgement stated clearly and to test it against the biases in [BIASES.md](BIASES.md). It does not replace his reading or his decision.
 
@@ -26,50 +26,63 @@ Step 1 ends with a short brief to the reviewer: the claim map in a few lines, ho
 
 ### Order
 
-Questions follow the reading order in the guidelines, so the idea is settled before the writing is discussed.
+The interview follows the review form, one section at a time, and ends with the bias test. The summary section opens with the idea, so the idea is settled before anything else is discussed.
 
-| Round | Purpose | Source of the questions |
+| Section | What Claude asks | What is settled |
 |---|---|---|
-| 1. The idea | State the core idea, what is new, whether it matters | Always asked. B5. |
-| 2. Soundness | For each weakness candidate: what is missing, where, which claim it undermines | Claim map and notes. B1, B2, B6–B9, B13 where triggered. |
-| 3. Gaps | Sections with no notes; requests the paper already answers | Coverage and note check. B3. |
-| 4. Triage | Weakness or comment, for each remaining point | Guidelines section 4. B10–B12 where triggered. |
-| 5. Strengths | What argues for acceptance | Always asked. B15. |
-| 6. Deciders | Which weaknesses set the score, what would raise it, confidence | Always asked. B4, B14, B16. |
+| 1. Summary | The idea in one sentence; the closest prior work and what is new; the reviewer's description of the paper | The summary paragraph |
+| 2. Strengths | Each positive remark in the notes; anything else that argues for acceptance | The strengths |
+| 3. Weaknesses | Each concern in the notes, related ones merged; the parts of the paper with no notes | The weaknesses |
+| 4. Comments | Everything left in the notes: questions, suggestions, minor issues, typos | The comments |
+| 5. Bias test | One question for each strength or weakness where a signal from the register is present | Each tested point is kept, reworded, moved to comments or dropped. The weaknesses are in order of severity. |
+
+Each section runs the same way:
+
+1. **Ask.** Claude puts the section's questions.
+2. **Outline.** From the answers, Claude writes the section as it will appear in the review.
+3. **Revise.** The reviewer edits the outline or says what to change, and Claude revises it.
+4. **Accept.** The reviewer accepts the section and the next one opens.
+
+Three things the register calls for are part of the sections for every paper: the idea and what is new (B5) in the summary, the case for acceptance (B15) in the strengths, and the parts with no notes (B3) in the weaknesses. They are not asked again in the bias test.
 
 ### Rules for questions
 
-- **Small rounds.** Two to four questions at a time, about ten to fifteen in total. Fewer for a short or clear-cut paper.
 - **Grounded.** Each question cites the note or the place in the paper it is about.
-- **Facts first, then the question.** Claude says what it found ("Table 3 reports three seeds; no variance is shown") and then asks.
+- **Question first, then the material behind it.** Claude asks the one thing it needs, then gives what the question rests on, labelled by source: the reviewer's note, and what Claude found in the paper ("Table 3 reports three seeds; no variance is shown").
 - **Not leading.** Ask what the reviewer thinks, not whether he agrees.
-- **Bias questions only when triggered.** Use the wording in the register as a starting point and adapt it to the paper. Do not name the bias in the question unless the reviewer asks why it is being asked.
+- **Bias questions only in the bias test.** One counterfactual question for each point where a signal is present: state the condition under which the point would not stand, and ask whether that condition holds. Use the wording in the register as a starting point and adapt it to the paper. Do not name the bias in the question unless the reviewer asks why it is being asked.
 - **One challenge per point.** If the reviewer gives a reason, record it and move on.
+- **No questions about scores.** Scores, confidence and the recommendation are the reviewer's. The register's entries about them (B4, B14, B16) are not asked.
 - **Short answers are fine.** So are "skip", "drop it" and "you decide the wording".
 - **Claude's own observations** are offered separately from the questions and labelled as Claude's. The reviewer accepts or drops each.
 
-### What each answer settles
+### What each section settles
 
-For every point, by the end of the interview:
+Before a section is accepted:
 
-- Is it a weakness, a comment, or dropped?
-- For a weakness: location, the claim it undermines, what would resolve it.
-- For a requested experiment: the claim that needs it, or that it is a suggestion.
+- Every point in it is a strength, a weakness or a comment, or is dropped.
+- A strength has a location.
+- A weakness is pinned: it has a location and a fix, and names the claim it undermines. The fix is the reviewer's to give. Claude asks what would resolve the weakness and does not propose it.
+- A requested experiment names the claim that needs it, or it is a suggestion and goes to the comments.
 
-## Step 3: Draft (Claude)
+The order of the weaknesses, most severe first, is the reviewer's to set. Claude does not rank them.
 
-Write the review in the venue's form, following the guidelines. Along with the draft, give the reviewer:
+## Step 3: Check
 
-- **Changes from the notes:** points moved to comments, merged, or dropped, each with the reason from the interview.
+1. Claude runs the checklist in section 7 of the guidelines and the bias checks in section 6 over the accepted sections, and says what is not met and where. Claude does not check or suggest a score.
+2. The reviewer fixes what is not met, in the section concerned.
+
+## Step 4: Draft
+
+The review is assembled from the accepted sections, in the venue's form: the summary as accepted, then the strengths, the weaknesses (most severe first) and the comments as they stand. No new text is written at this step. Along with the draft, the reviewer gets:
+
+- **Sources:** for each point, the notes and the reviewer's words it came from.
 - **Claude's additions:** any point not from the notes, marked.
+- **Changes from the notes:** points moved to another section, and points dropped.
 - **Open items:** anything the interview did not settle.
 
-## Step 4: Check
-
-1. Run the checklist in section 7 of the guidelines.
-2. When the reviewer gives his scores, compare them with the text: a low soundness score needs a named fault; the weaknesses marked as deciders should account for the overall score. Say where they do not match. Do not suggest a score.
-3. The reviewer edits and submits.
+The reviewer edits the draft, sets the scores in the review form, and submits.
 
 ## After the author response
 
-A short second interview: for each decider weakness, did the response deliver what was asked? Then draft the two-to-four sentence reply described in the guidelines.
+A short second interview: for each weakness, most severe first, did the response deliver what was asked? Then draft the two-to-four sentence reply described in the guidelines, leaving the score decision for the reviewer to add.

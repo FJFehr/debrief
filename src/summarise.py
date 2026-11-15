@@ -9,36 +9,21 @@ Writes: outputs/prompts/foo.prompt.md (ready to paste into a model)
 import sys
 from pathlib import Path
 
+from src.review import TEXT_PLACEHOLDER, load_template, write_prompt
+
 PROMPT_PATH = Path("prompts/templates/summary.md")
 
 
 def load_prompt(annotated_text: str, preface_text: str = "") -> str:
-    if not PROMPT_PATH.exists():
-        print(f"Error: prompt template not found at {PROMPT_PATH}", file=sys.stderr)
-        sys.exit(1)
-    template = PROMPT_PATH.read_text(encoding="utf-8")
-    if "<insert annotated text here>" not in template:
-        print(
-            "Error: prompt template missing '<insert annotated text here>' placeholder",
-            file=sys.stderr,
-        )
-        sys.exit(1)
     full_input = annotated_text
     if preface_text.strip():
         full_input = preface_text.strip() + "\n\n" + annotated_text
-    return template.replace("<insert annotated text here>", full_input)
+    return load_template(PROMPT_PATH).replace(TEXT_PLACEHOLDER, full_input)
 
 
 def summarise(input_path: Path, output_path: Path, preface_text: str = "") -> None:
     annotated_text = input_path.read_text(encoding="utf-8")
-    prompt = load_prompt(annotated_text, preface_text=preface_text)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(prompt, encoding="utf-8")
-    print(f"\n✓ Prompt written to {output_path}")
-    print(
-        "\nCopy the contents and paste into Claude (claude.ai) or your local model.\n"
-    )
+    write_prompt(load_prompt(annotated_text, preface_text=preface_text), output_path, "Prompt")
 
 
 def main() -> None:

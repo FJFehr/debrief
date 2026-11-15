@@ -44,26 +44,9 @@ Read [REVIEWING_GUIDELINES.md](../REVIEWING_GUIDELINES.md) first. This file only
 
 ## Summary Of Weaknesses
 
-* **<claim>.** <what is missing, with location>. <which claim this undermines>. **To resolve:** <specific action>.
+* **<claim>.** <what is missing, with location>. <which claim this undermines>. <what would resolve it, as a first-person sentence>.
 
 ## Comments Suggestions And Typos
 
-**Questions**
-* ...
-
-**Suggestions**
-* ...
-
-**Minor issues and typos**
-* ...
-
-## Scores (the reviewer)
-
-- Confidence: /5
-- Soundness: /5
-- Excitement: /5
-- Overall Assessment: /5
-- Reproducibility: /5
-- Datasets: /5
-- Software: /5
+* <one line for each question, suggestion, minor issue or typo, as one list>
 ```
