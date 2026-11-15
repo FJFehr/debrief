@@ -39,7 +39,7 @@ from src.review import has_answers, load_interview_prompt, load_review_prompt
 
 STATIC_DIR = Path(__file__).parent / "interview_static"
 APP_ADDENDUM = Path("prompts/templates/interview_app.md")
-MODEL_CWD = Path.home() / ".cache" / "research-assistant" / "interview"
+MODEL_CWD = Path.home() / ".cache" / "debrief" / "interview"
 MODEL_TIMEOUT_S = 900
 PAGE_ZOOM = 2.0
 

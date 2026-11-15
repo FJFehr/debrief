@@ -1,7 +1,7 @@
 [project]
-name = "research-assistant"
+name = "debrief"
 version = "0.1.0"
-description = "Personal paper reading assistant: turn an annotated PDF into a drafted peer review or a reading-note prompt"
+description = "Debrief, a paper review assistant: turn an annotated PDF into a drafted review"
 requires-python = ">=3.11"
 dependencies = [
     "pymupdf>=1.24",
