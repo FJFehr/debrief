@@ -51,3 +51,25 @@ def test_stock_take_says_where_the_time_went_and_what_was_changed(tmp_path):
 
 def test_stock_take_of_an_empty_log():
     assert summarise([], "foo") == "# Stock-take: foo\n\nThe usage log is empty.\n"
+
+
+def test_stock_take_counts_talk_plans_facts_and_the_saved_review():
+    def reply(t, stage, action, **extra):
+        return {"t": f"2026-01-01T10:0{t}:00.000", "event": "request", "stage": stage, "phase": "outline",
+                "path": "/api/reply", "body": {"action": action, "text": "x"}, "status": 200, "ms": 1000, **extra}
+
+    text = summarise([
+        reply(0, "brief", "talk"), reply(1, "brief", "talk"), reply(2, "summary", "plan"),
+        reply(3, "summary", "apply"),
+        reply(4, "comments", "change", entries=[{"id": "C1", "set": {"counter": [None, "Section 4 reports it."]}}]),
+        {"t": "2026-01-01T10:05:00.000", "event": "request", "stage": "comments", "phase": "outline", "path": "/api/entry",
+         "body": {"id": "C1", "counter": "settled"}, "status": 200, "ms": 2,
+         "entries": [{"id": "C1", "set": {"counter_settled": [None, True]}}]},
+        {"t": "2026-01-01T10:06:00.000", "event": "check", "stage": "draft", "phase": None, "ms": 61000},
+        {"t": "2026-01-01T10:07:00.000", "event": "saved", "stage": "final", "phase": None, "unchanged": True},
+    ], "foo")
+    assert "- Free talk filed, by step: brief ×2" in text
+    assert "- Plans asked for, by step: summary ×1" in text and "- Plans written out, by step: summary ×1" in text
+    assert "| summary | 2.0 | 0.0 | 0 | 1 | 0 | 0 |" in text  # the plan agreed counts as the change; asking for it does not
+    assert "- Facts from the paper put on a point: 1, settled by the reviewer: 1" in text
+    assert "- The check beside the page: 61 s" in text and "- The review saved as submitted: the draft unchanged" in text

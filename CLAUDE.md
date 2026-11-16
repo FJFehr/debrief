@@ -7,7 +7,7 @@ Guidance for Claude Code when working in this repository.
 Debrief, a paper review assistant. It turns a PDF that the reviewer has annotated (highlights and margin notes) into a drafted review, in three steps:
 
 1. **Extraction**: the PDF becomes Markdown with every highlight and note in place.
-2. **Interview**: a browser page where a model asks the reviewer about their notes, following the review form section by section (summary, strengths, weaknesses, comments). It builds an index of the reviewer's points, which the reviewer can edit at any time, and tests them against a bias register.
+2. **Interview**: a browser page where the reviewer talks their notes through and a model asks about them, following the review form section by section (summary, strengths, weaknesses, comments). It builds an index of the reviewer's points, which the reviewer can edit at any time, and tests them against a bias register.
 3. **Draft**: the app assembles the review in the venue's form from the sections the reviewer accepted. No model writes at this step.
 
 The reviewer's notes and spoken answers are the source of every judgement. The model asks, organises and rephrases; it does not supply opinions of its own.
@@ -41,6 +41,12 @@ An older second use, a prompt for a personal reading note with BibTeX (`uv run p
 - Each page boundary is marked: `--- Page 3 ---`.
 
 **The reviewer's words are stored as sent.** The interview record is written by the server, not the model, and answers are never tidied.
+
+**Talk never moves the interview on.** The reviewer can say anything at any step. It is stored as sent and filed onto points; a filed reply or a plan cannot write or change text, and the server enforces that, not the prompt. Only a button ends a step.
+
+**The summary is the one section drafted from the paper.** It describes and does not judge, so the model writes it from the abstract, contributions, introduction and conclusion, and the reviewer shapes it. Every strength, weakness and comment still comes from the reviewer.
+
+**A fact from the paper is not an opinion.** Where the paper states something that cuts against a point, the model puts that fact on the point with its location. It stays until the reviewer rewords the point or says it stands.
 
 **Scores stay with the reviewer.** Scores, confidence and the recommendation are set by the reviewer in the review form. They never pass through the software: it does not ask for them, suggest them or comment on them.
 

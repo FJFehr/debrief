@@ -218,8 +218,14 @@ def test_index_as_the_model_sees_it():
 @pytest.mark.parametrize(
     "kind,section,text,stage,head,step",
     [
-        ("brief", "brief", "", "summary", "[Brief] no corrections", "ask · summary"),
-        ("brief", "brief", "claim 2 is wrong", "summary", "[Brief] claim 2 is wrong", "ask · summary"),
+        # The summary has no questions: it is written from the paper as soon as the overview is left.
+        ("brief", "brief", "", "summary", "[Brief] no corrections", "outline · summary"),
+        ("brief", "brief", "claim 2 is wrong", "summary", "[Brief] claim 2 is wrong", "outline · summary"),
+        # Free talk is filed where the interview stands, and a plan is asked for before a rewrite.
+        ("talk", "brief", RAW, "brief", f"[Talk · brief]\n{RAW}", "file · brief"),
+        ("talk", "weaknesses", "one more thing", "weaknesses", "[Talk · weaknesses]\none more thing", "file · weaknesses"),
+        ("plan", "weaknesses", "group them", "weaknesses", "[Plan requested · weaknesses]\ngroup them", "plan · weaknesses"),
+        ("apply", "weaknesses", "", "weaknesses", "[Plan agreed · weaknesses]", "revise · weaknesses"),
         ("answer", "weaknesses", RAW, "weaknesses", f"[Answer · weaknesses]\n{RAW}", "outline · weaknesses"),
         # No words: the wording is left to the model.
         ("answer", "comments", " ", "comments", "[Answer · comments]", "outline · comments"),
@@ -228,8 +234,11 @@ def test_index_as_the_model_sees_it():
         ("accept", "strengths", "", "weaknesses", "[Accepted · strengths]", "ask · weaknesses"),
         ("change", "weaknesses", "W2 shorter", "weaknesses", "[Change requested · weaknesses]\nW2 shorter", "revise · weaknesses"),
         # After the interview a change is about the review as a whole.
-        ("change", "draft", "drop S2", "draft", "[Change requested · review]\ndrop S2", "revise · review"),
-        ("change", "final", "drop S2", "final", "[Change requested · review]\ndrop S2", "revise · review"),
+        # And may concern the summary, so the paragraph goes with it.
+        ("change", "draft", "drop S2", "draft",
+         "[Change requested · review]\ndrop S2\n\n[Summary as it stands]\nThe paragraph as it stands.", "revise · review"),
+        ("change", "final", "drop S2", "final",
+         "[Change requested · review]\ndrop S2\n\n[Summary as it stands]\nThe paragraph as it stands.", "revise · review"),
     ],
 )
 def test_messages_sent_to_the_model(kind, section, text, stage, head, step):
@@ -299,17 +308,16 @@ def ids(app):
 
 
 def play_to_weaknesses(app):
-    """Brief, summary and strengths, with one change to the summary and one follow-up.
+    """Overview, summary and strengths, with one change to the summary and one follow-up.
 
     Returns where the interview stood after each step.
     """
     app.script += [
         {"kind": "brief", "message": "Claim map: one claim."},
-        ask({"question": "What is the idea, in one sentence?", "guide": "One sentence."}),
         outline(heard_as='"graph rag" = GraphRAG',
                 sentences=[{"text": "The paper studies cheap retrieval.", "job": "studies"},
                            {"text": "Results are very strong.", "job": "evaluation"}]),
-        outline(plan=[{"target": "2", "action": "cut", "because": "drop 2"}],
+        outline(plan=[{"target": "2", "action": "cut", "because": "second paragraph"}],
                 sentences=[{"text": "The paper studies cheap retrieval.", "job": "studies"}]),
         ask({"id": "S1", "question": "Is the lower cost a strength?", "notes": 'A3: "cheap!"',
              "paper": "Table 2 reports half the calls."}, entries=[S1]),
@@ -322,8 +330,7 @@ def play_to_weaknesses(app):
     stood = [where(app)]
     for payload in (
         {"text": "claim 2 is missing"},
-        {"text": RAW},
-        {"action": "change", "text": "drop 2"},
+        {"action": "change", "text": RAW},
         {"action": "accept", "text": "The paper studies cheap retrieval,  my way."},
         {"text": ""},
         {"text": "the cost one"},
@@ -338,8 +345,7 @@ def test_the_interview_follows_the_review_form(app):
     assert where(app) == ("new", None)
     assert play_to_weaknesses(app) == [
         ("brief", None),
-        ("summary", "ask"),
-        ("summary", "outline"),
+        ("summary", "outline"),  # written from the paper: there is nothing to ask
         ("summary", "outline"),  # a revision is looked at again
         ("strengths", "ask"),
         ("strengths", "ask"),  # a follow-up question leaves the answer owed
@@ -355,9 +361,8 @@ def test_the_interview_follows_the_review_form(app):
     outlined = ("[Index]\nS1 (strength): Lower cost at similar accuracy\n"
                 f"  body: The method halves the number of calls.\n  where: Table 2\n{UNRANKED}")
     assert [c["prompt"] for c in app.calls[1:]] == [
-        "[Brief] claim 2 is missing\n\n[Index]\n(empty)\n\n[Next: ask · summary]",
-        f"[Answer · summary]\n{RAW}\n\n[Index]\n(empty)\n\n[Next: outline · summary]",
-        "[Change requested · summary]\ndrop 2\n\n[Summary as it stands]\n"
+        "[Brief] claim 2 is missing\n\n[Index]\n(empty)\n\n[Next: outline · summary]",
+        f"[Change requested · summary]\n{RAW}\n\n[Summary as it stands]\n"
         "The paper studies cheap retrieval. Results are very strong.\n\n[Index]\n(empty)\n\n[Next: revise · summary]",
         # The summary goes back as the reviewer left it, typed by hand.
         "[Accepted · summary]\nThe paper studies cheap retrieval,  my way.\n\n[Index]\n(empty)\n\n[Next: ask · strengths]",
@@ -368,7 +373,6 @@ def test_the_interview_follows_the_review_form(app):
     assert app.state["summary"] == "The paper studies cheap retrieval,  my way."
     assert [(t["role"], t["section"], t.get("kind") or t["fields"]["kind"]) for t in app.state["turns"]] == [
         ("claude", "brief", "brief"), ("reviewer", "brief", "brief"),
-        ("claude", "summary", "question"), ("reviewer", "summary", "answer"),
         ("claude", "summary", "outline"), ("reviewer", "summary", "change"),
         ("claude", "summary", "outline"), ("reviewer", "summary", "accept"),
         ("claude", "strengths", "question"), ("reviewer", "strengths", "answer"),
@@ -376,7 +380,7 @@ def test_the_interview_follows_the_review_form(app):
         ("claude", "strengths", "outline"), ("reviewer", "strengths", "accept"),
         ("claude", "weaknesses", "question"),
     ]
-    assert app.state["turns"][3] == {"role": "reviewer", "section": "summary", "kind": "answer", "text": RAW}
+    assert app.state["turns"][3] == {"role": "reviewer", "section": "summary", "kind": "change", "text": RAW}
     assert app.state["entries"] == [
         {"id": "S1", "kind": "strength", **{k: v for k, v in S1_OUTLINED.items() if k != "id"}},
         {"id": "W1", "kind": "weakness", "claim": "Single runs"},  # candidates are in the index as soon as they are put
@@ -561,7 +565,7 @@ def test_session_survives_a_restart_of_the_server(app, tmp_path):
     play_to_weaknesses(app)
     again = InterviewApp(Path("foo.pdf"), tmp_path)
     assert again.restore() and not again.legacy
-    assert again.state == app.state and again.state["session_id"] == "sess-1" and len(again.state["turns"]) == 15
+    assert again.state == app.state and again.state["session_id"] == "sess-1" and len(again.state["turns"]) == 13
 
 
 def test_answer_is_on_disk_before_the_model_replies_and_can_be_retried(app, monkeypatch, tmp_path):
@@ -578,7 +582,7 @@ def test_answer_is_on_disk_before_the_model_replies_and_can_be_retried(app, monk
     # The failed call lost nothing: a new server finds the answer and knows it is unanswered.
     again = InterviewApp(Path("foo.pdf"), tmp_path)
     assert again.restore() and again.pending()
-    assert again.state["turns"][-1]["text"] == RAW and where(again) == ("summary", "ask")
+    assert again.state["turns"][-1]["text"] == RAW and where(again) == ("summary", "outline")
     assert again.view()["pending"] is True
     assert again.post("/api/reply", {"text": "again"})[0] == 400  # not a second answer: ask the model again
 
@@ -586,7 +590,7 @@ def test_answer_is_on_disk_before_the_model_replies_and_can_be_retried(app, monk
     assert again.post("/api/retry", {})[0] == 200
     assert not again.pending()
     assert [t["role"] for t in again.state["turns"]] == ["claude", "reviewer", "claude"]  # sent once, not twice
-    assert app.calls[-1]["prompt"] == f"[Brief] {RAW}\n\n[Index]\n(empty)\n\n[Next: ask · summary]"
+    assert app.calls[-1]["prompt"] == f"[Brief] {RAW}\n\n[Index]\n(empty)\n\n[Next: outline · summary]"
     again.ask_claude()  # nothing is owed now
     assert len(app.calls) == 2
 
@@ -608,7 +612,7 @@ def test_each_step_uses_its_own_model(app):
     app.script += [{"kind": "brief", "message": "b"}, ask({"question": "q"}), outline(), "- all met"]
     app.start()
     app.reply({"text": ""})
-    app.reply({"text": "an answer"})
+    app.reply({"action": "change", "text": "shorter"})
     app.state["stage"] = "draft"
     app.check()
     app.draft()
@@ -686,9 +690,9 @@ def test_record_holds_the_reviewers_words_byte_for_byte(app):
     app.script.append(outline(entries=[{"id": "W1", "said": "the cost one"}]))
     app.reply({"action": "skip"})  # nothing to add to the weaknesses
     record = app.answers_path.read_text(encoding="utf-8")
-    for said in ("claim 2 is missing", RAW, "drop 2", "The paper studies cheap retrieval,  my way.", "the cost one"):
+    for said in ("claim 2 is missing", RAW, "The paper studies cheap retrieval,  my way.", "the cost one"):
         assert said in record
-    assert f"Answer: {RAW}\n" in record
+    assert f"Change requested: {RAW}\n" in record
     assert "Scores" not in record  # scores are set in the review form, not here
 
 
@@ -698,7 +702,7 @@ def test_record_structure(app):
     app.edit_entry({"id": "W1", "set": {"where": "Table 2"}})
     assert app.answers_path.read_text(encoding="utf-8") == f"""# Interview record: foo.pdf
 
-## Brief
+## Overview
 
 Claim map: one claim.
 
@@ -706,15 +710,11 @@ Corrections from the reviewer: claim 2 is missing
 
 ## Summary
 
-Asked:
-1. What is the idea, in one sentence?
-   Guide: One sentence.
-Answer: {RAW}
 Heard as: "graph rag" = GraphRAG
 Outlined: The paper studies cheap retrieval. Results are very strong.
-Change requested: drop 2
+Change requested: {RAW}
 Plan:
-- 2 cut: "drop 2"
+- 2 cut: "second paragraph"
 Outlined: The paper studies cheap retrieval.
 Accepted.
 
@@ -1054,9 +1054,9 @@ def test_view_gives_each_entry_its_bullet_gaps_and_whether_its_quote_was_said(ap
     reviewed(app)
     app.state["entries"][2]["said"] = "yes, the cost one"  # words in order; spacing does not count
     view = app.view()
-    assert set(view) == {"paper", "session", "busy", "pending", "files"}
+    assert set(view) == {"paper", "session", "busy", "pending", "files", "checking", "check_error"}
     assert set(view["session"]) == {"legacy", "stage", "phase", "turns", "summary", "entries", "ranked", "check",
-                                    "findings", "draft", "final"}
+                                    "findings", "draft", "final", "final_at", "example", "plan_open", "final_unchanged"}
     assert set(view["files"]) == {"answers", "review_text", "trace", "check", "final"}
     assert (view["session"]["legacy"], view["busy"], view["pending"]) == (False, False, False)
     entries = {e["id"]: e for e in view["session"]["entries"]}
@@ -1201,3 +1201,162 @@ def test_the_server_refuses_a_request_from_another_site(app):
     finally:
         server.shutdown()
         server.server_close()
+
+
+# ---------------------------------------------------------------------------
+# Talk, plans, and what the paper says otherwise
+# ---------------------------------------------------------------------------
+
+
+def test_talk_is_filed_and_never_moves_the_interview(app):
+    """Free talk is stored as sent and sorted onto points. It cannot write text or end a step."""
+    app.script += [
+        {"kind": "brief", "message": "Overview."},
+        # The model tries to do more than file: none of it is taken.
+        {"kind": "outline", "message": "W1: new candidate.", "sentences": [{"text": "A summary."}],
+         "entries": [{"id": "W1", "claim": "Hard to follow", "sources": ["A4"], "remark": "so the method is, like, hacky",
+                      "body": "Not wanted.", "resolve": "Not wanted.", "drop": True}], "order": ["W1"]},
+    ]
+    app.start()
+    assert app.post("/api/reply", {"action": "talk", "text": " "}) == (400, {"error": "Say something to file."})
+    app.reply({"action": "talk", "text": RAW})
+    assert where(app) == ("brief", None) and app.state["summary"] == ""
+    assert app.state["turns"][1] == {"role": "reviewer", "section": "brief", "kind": "talk", "text": RAW}
+    assert app.calls[-1]["prompt"] == f"[Talk · brief]\n{RAW}\n\n[Index]\n(empty)\n\n[Next: file · brief]"
+    assert app.state["turns"][-1]["fields"] == {
+        "kind": "filed", "message": "W1: new candidate.",
+        "entries": [{"id": "W1", "claim": "Hard to follow", "sources": ["A4"], "remark": "so the method is, like, hacky"}]}
+    assert app.state["entries"] == [{"id": "W1", "kind": "weakness", "claim": "Hard to follow", "sources": ["A4"],
+                                     "remarks": ["so the method is, like, hacky"]}]
+    assert not app.pending()
+    record = app.answers_path.read_text(encoding="utf-8")
+    assert f"Talk: {RAW}\n" in record and "Filed: W1: new candidate. (W1)" in record
+
+    # In a section that is already written out: the remark is attached and the text stays as it was.
+    at(app, "weaknesses", "outline", [{**W_PINNED, "sources": ["A2"]}], turns=[])
+    app.script.append({"kind": "filed", "message": "W1: added.", "entries": [
+        {"id": "W1", "remark": "three seeds at least", "sources": ["A7"], "body": "Rewritten.", "move": "comment"},
+        {"id": "C1", "claim": "Typo in the title", "remark": "a typo"}]})
+    app.reply({"action": "talk", "text": "three seeds at least, and a typo"})
+    w1, c1 = app.state["entries"]
+    assert where(app) == ("weaknesses", "outline")
+    assert (w1["id"], w1["body"], w1["sources"], w1["remarks"]) == ("W1", "Each setting is run once.", ["A2", "A7"], ["three seeds at least"])
+    assert c1 == {"id": "C1", "kind": "comment", "claim": "Typo in the title", "remarks": ["a typo"]}
+    assert '  remark: "three seeds at least"' in index_text(app.state["entries"], False)  # the model is shown it from then on
+
+
+def test_a_reply_cannot_file_or_plan_unless_that_was_asked(app):
+    at(app, "strengths", "ask")
+    app.script.append({"kind": "filed", "message": "Put the question again.", "entries": [{"id": "S1", "claim": "Cheap", "remark": "it is cheap"}]})
+    app.reply({"text": "it is cheap"})
+    assert app.state["turns"][-1]["fields"]["kind"] == "question" and where(app) == ("strengths", "ask")
+    assert app.state["entries"] == [{"id": "S1", "kind": "strength", "claim": "Cheap", "remarks": ["it is cheap"]}]
+
+
+def test_a_plan_changes_nothing_until_it_is_agreed(app):
+    at(app, "summary", "outline", summary="One. Two. Three.")
+    plan = [{"target": "1", "action": "keep", "point": "what it studies"}, {"target": "2", "action": "cut", "because": "shrink it"}]
+    assert app.post("/api/reply", {"action": "apply"})[1] == {"error": "There is no plan to write from. Ask for one first."}
+    app.script += [
+        {"kind": "outline", "message": "Two sentences.", "plan": plan, "sentences": [{"text": "Rewritten already."}],
+         "entries": [{"id": "S1", "claim": "Not asked for"}]},
+        outline(plan=plan, sentences=[{"text": "One."}, {"text": "Three."}]),
+    ]
+    app.reply({"action": "plan", "text": "shrink it to the key points", "summary": "One. Two. Three, by hand."})
+    assert app.state["summary"] == "One. Two. Three, by hand." and app.state["entries"] == []  # the box is kept, nothing is rewritten
+    assert app.state["turns"][-1]["fields"] == {"kind": "plan", "message": "Two sentences.", "plan": plan}
+    assert app.plan_open() and app.view()["session"]["plan_open"] is True and where(app) == ("summary", "outline")
+    assert app.calls[-1]["prompt"] == ("[Plan requested · summary]\nshrink it to the key points\n\n[Summary as it stands]\n"
+                                       "One. Two. Three, by hand.\n\n[Index]\n(empty)\n\n[Next: plan · summary]")
+    app.reply({"action": "apply"})
+    assert app.state["summary"] == "One. Three." and not app.plan_open()
+    assert app.calls[-1]["prompt"].startswith("[Plan agreed · summary]\n\n[Summary as it stands]\n")
+    assert app.calls[-1]["prompt"].endswith("[Next: revise · summary]")
+    record = app.answers_path.read_text(encoding="utf-8")
+    assert "Plan requested: shrink it to the key points\n" in record and "- 1 keep [what it studies]\n" in record and "Plan agreed.\n" in record
+
+
+def test_the_summary_can_be_changed_by_voice_after_the_interview(app):
+    reviewed(app, "final")
+    app.script += [outline(sentences=[{"text": "A shorter summary."}], entries=[{"id": "W1", "drop": True}]),
+                   {"kind": "filed", "message": "", "sentences": [{"text": "Not from talk."}]}]
+    app.reply({"action": "change", "text": "shorten the summary and drop W1"})
+    assert app.state["summary"] == "A shorter summary." and find_entry(app.state["entries"], "W1")["dropped"] is True
+    assert "A shorter summary." in app.review_text_path.read_text(encoding="utf-8")  # the draft follows
+    app.reply({"action": "talk", "text": "one more thought"})
+    assert app.state["summary"] == "A shorter summary."
+
+
+def test_a_fact_from_the_paper_stays_on_the_point_until_it_is_settled(app):
+    comment = {"id": "C1", "kind": "comment", "body": "The seeds are not reported."}
+    at(app, "comments", "outline", [comment])
+    fact = "Section 4.1 reports three seeds for every setting."
+    app.script += [outline(entries=[{"id": "C1", "counter": fact}]), ask({"question": "bias?"}),
+                   outline(entries=[{"id": "C1", "counter": "Table 3 lists them too."}]),
+                   outline(entries=[{"id": "C1", "body": "Where are the seeds listed?", "counter": "none"}])]
+    app.reply({"action": "change", "text": "keep C1 as it is"})
+    c1 = app.state["entries"][0]
+    assert c1["counter"] == fact and gaps(c1) == ["counter"]
+    assert app.view()["session"]["entries"][0]["gaps"] == ["counter"]
+    assert f"  counter (open): {fact}" in index_text(app.state["entries"], False)
+    status, body = app.post("/api/reply", {"action": "accept"})
+    assert status == 400 and body["error"] == "C1 needs a look, since the paper says otherwise."
+    assert app.post("/api/entry", {"id": "C1", "counter": "settled"})[0] == 200  # it stands, says the reviewer
+    assert gaps(c1) == [] and "counter (settled by the reviewer)" in index_text(app.state["entries"], False)
+    assert app.post("/api/reply", {"action": "accept"})[0] == 200 and where(app) == ("bias", "ask")
+    # A new fact opens it again; a revision that removes the conflict clears it.
+    at(app, "final", None, [c1], turns=[])
+    c1 = app.state["entries"][0]
+    app.reply({"action": "change", "text": "look at C1 again"})
+    assert c1["counter"] == "Table 3 lists them too." and gaps(c1) == ["counter"]
+    assert app.post("/api/draft", {}) == (400, {"error": "C1 needs a look, since the paper says otherwise."})
+    assert app.post("/api/draft", {"force": True})[0] == 200  # drafted anyway: the trace names it
+    assert "C1 needs a look" in app.trace_path.read_text(encoding="utf-8")
+    app.reply({"action": "change", "text": "C1: make it a question"})
+    assert "counter" not in c1 and gaps(c1) == [] and c1["body"] == "Where are the seeds listed?"
+
+
+def test_the_check_leads_with_what_the_paper_says_and_puts_it_on_the_point(app):
+    reviewed(app)
+    fact = "Table 2 reports three seeds, so the runs are not single."
+    app.script.append({"findings": [{"target": "W2", "problem": "No location."},
+                                    {"target": "w1", "kind": "fact", "problem": fact},
+                                    {"target": "S1", "kind": "other", "problem": "Vague."}]})
+    app.check()
+    assert "kind` set to `fact`" in app.calls[-1]["prompt"]
+    assert [(f["target"], f.get("kind")) for f in app.state["findings"]] == [("w1", "fact"), ("W2", None), ("S1", None)]
+    w1 = find_entry(app.state["entries"], "W1")
+    assert w1["counter"] == fact and gaps(w1) == ["counter"]
+    assert app.post("/api/finding", {"n": 0, "action": "dismiss"})[0] == 200  # set aside: the reviewer has dealt with it
+    assert w1["counter_settled"] is True and gaps(w1) == []
+
+
+def test_the_check_starts_by_itself_after_the_bias_test(app):
+    at(app, "bias", "outline", [W_PINNED])
+    app.auto_check = True
+    app.script.append({"findings": [{"target": "W1", "problem": "The fix is vague."}]})
+    assert app.post("/api/reply", {"action": "accept"})[0] == 200
+    assert where(app) == ("draft", None)
+    app.checker.join(5)
+    assert not app.checking() and app.view()["checking"] is False and app.check_error == ""
+    assert app.state["findings"] == [{"target": "W1", "problem": "The fix is vague."}]
+    assert app.models[-1] == (interview_app.DEEP["model"], interview_app.DEEP["effort"])
+    assert json.loads(app.session_path.read_text(encoding="utf-8"))["findings"] == app.state["findings"]
+
+    # A check that fails says so and leaves the interview as it was.
+    at(app, "bias", "outline", [W_PINNED], findings=[], check="", turns=[])
+    assert app.post("/api/reply", {"action": "accept"})[0] == 200  # the script is empty: the model call fails
+    app.checker.join(5)
+    assert app.view()["check_error"] and where(app) == ("draft", None)
+
+
+def test_the_final_step_says_when_the_draft_was_saved_unchanged(app):
+    reviewed(app, "final")
+    app.save()
+    status, view = app.post("/api/final", {"text": app.review_text() + "\n"})
+    assert status == 200 and view["session"]["final_unchanged"] is True and view["session"]["final_at"]
+    assert view["session"]["example"].endswith(f"ACL_ARR_{date.today():%Y_%B}_foo.md")
+    status, view = app.post("/api/final", {"text": "The review as I submitted it."})
+    assert view["session"]["final_unchanged"] is False
+    saved = [json.loads(line) for line in app.usage_path.read_text(encoding="utf-8").splitlines() if '"saved"' in line]
+    assert [line["unchanged"] for line in saved] == [True, False]

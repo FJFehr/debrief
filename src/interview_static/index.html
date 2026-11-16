@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Review interview</title>
+<title>Debrief</title>
 <script>
   // Light or dark: the reviewer's last choice, else the system setting. Set before the first paint.
   (() => {
@@ -40,7 +40,7 @@
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--sans); }
-  #app { display: grid; grid-template-columns: 250px minmax(380px, min(38%, 680px)) 1fr; height: 100vh; }
+  #app { --rail: 250px; display: grid; grid-template-columns: var(--rail) minmax(380px, min(38%, 680px)) 1fr; height: 100vh; }
   #app.norail, #app.legacy { grid-template-columns: minmax(380px, min(42%, 720px)) 1fr; }
   #app.norail #rail, #app.legacy #rail { display: none; }
   button, select { font: inherit; font-size: 14px; color: var(--ink); background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r); padding: 6px 12px; cursor: pointer; }
@@ -58,9 +58,21 @@
   .bar { flex: 0 0 var(--bar); height: var(--bar); display: flex; align-items: center; gap: 8px; padding: 0 var(--gutter); border-bottom: 1px solid var(--line); background: var(--panel); min-width: 0; }
   .spacer { flex: 1; }
 
-  /* rail: the flow, then the index. It can be hidden with the button at the top of the middle pane. */
+  /* rail: the flow, then the index. The bar on its right edge is dragged to resize it or to put it away. */
+  #grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 9px; cursor: col-resize; z-index: 6; touch-action: none; }
+  #grip:hover, #grip.drag { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  #gripTab { position: absolute; top: 50%; left: -3px; transform: translateY(-50%); width: 15px; height: 48px; display: flex; align-items: center; justify-content: center; background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r); color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; user-select: none; }
+  #gripTab:hover { color: var(--ink); border-color: var(--ink); }
+  #app.norail #grip { left: 0; width: 16px; background: var(--chip); border-right: 1px solid var(--line); cursor: pointer; }
+  #app.norail #gripTab { left: 0; width: 15px; border: 0; background: none; }
+  #app.norail #mid { padding-left: 16px; }
+  #app.legacy #grip { display: none; }
+  #brand { font-family: var(--serif); font-size: 16px; flex: none; }
+  /* The hover over a note or a point: large, at once, in the note's own colour. Dark ink in both themes. */
+  #tip { position: fixed; z-index: 20; display: none; max-width: min(480px, 60vw); padding: 12px 16px; border-radius: var(--r); font: 18px/1.4 var(--sans); color: #1d1a16; background: #ffe36e; box-shadow: 0 4px 16px var(--shadow); pointer-events: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #tip b { display: block; font-size: 14px; margin-bottom: 4px; }
   #rail { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); font-size: 14px; }
-  #paperName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  #paperName { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   #flow { padding: 8px; border-bottom: 1px solid var(--line); }
   #index { flex: 1; overflow-y: auto; padding: 0 8px 16px; }
   #index .label { margin: 12px 8px 4px; }
@@ -100,7 +112,7 @@
   details.more[open] > summary { margin-bottom: 4px; }
 
   /* middle pane */
-  #mid { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+  #mid { position: relative; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
   #head > b { font-family: var(--serif); font-size: 20px; line-height: 1; }
   #log { flex: 1; overflow-y: auto; padding: var(--gutter); display: flex; flex-direction: column; gap: 12px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 16px; overflow-wrap: anywhere; }
@@ -129,6 +141,11 @@
   .bullet:hover { background: var(--chip); }
   .bullet.dropped { color: var(--muted); text-decoration: line-through; }
   .plan { font-size: 14px; }
+  #planCard .plan { font-size: 16px; padding-left: 0; list-style: none; }
+  #planCard .plan li { padding: 4px 0; border-top: 1px solid var(--line); }
+  #sents { margin-top: 8px; }
+  #sents ol { margin: 0; padding-left: 24px; }
+  .saved { color: var(--mark); font-weight: 600; font-size: 14px; }
   details.history { border-top: 1px solid var(--line); padding-top: 8px; }
   details.history[open] { display: flex; flex-direction: column; gap: 12px; }
   /* the open entry */
@@ -180,11 +197,12 @@
 <body>
 <div id="app">
   <nav id="rail">
-    <div class="bar"><span id="paperName">Loading…</span></div>
+    <div class="bar"><b id="brand">Debrief</b><span id="paperName">Loading…</span></div>
     <div id="flow"></div>
     <div id="index"></div>
   </nav>
   <section id="mid">
+    <div id="grip" role="separator" aria-orientation="vertical"><span id="gripTab">‹</span></div>
     <header id="head" class="bar"></header>
     <div id="log"></div>
     <div id="composer"></div>
@@ -194,10 +212,11 @@
     <div id="paperScroll"><div id="pages"></div></div>
   </section>
 </div>
+<div id="tip"></div>
 
 <script>
 "use strict";
-const STEPS = [["brief", "Brief"], ["summary", "Summary"], ["strengths", "Strengths"], ["weaknesses", "Weaknesses"],
+const STEPS = [["brief", "Overview"], ["summary", "Summary"], ["strengths", "Strengths"], ["weaknesses", "Weaknesses"],
                ["comments", "Comments"], ["bias", "Bias test"], ["draft", "Draft"], ["final", "Final"]];
 const STEP_NAME = Object.fromEntries(STEPS);
 const SECTIONS = ["summary", "strengths", "weaknesses", "comments", "bias"];
@@ -212,8 +231,10 @@ const PARTS = {
   observation: [["claim", "Label in the index"], ["body", "Claude's observation"], ["where", "Where it shows"]],
 };
 const GAPS = {where: "location", resolve: "fix"};
-const TURN_TAG = {brief: "corrections to the brief", answer: "answer", change: "change requested", accept: "accepted", skip: "skipped"};
-const EMPTY_TAG = {brief: "no corrections", answer: "wording left to Claude"};
+const TURN_TAG = {brief: "said before going on", answer: "answer", change: "change requested", accept: "accepted", skip: "skipped",
+                  talk: "said", plan: "plan requested", apply: "plan agreed"};
+const EMPTY_TAG = {brief: "went on", answer: "wording left to Claude", apply: "plan agreed"};
+const HEADING = {brief: "Overview of your notes"};
 // Marks a point Claude raised itself, until the reviewer adopts or drops it.
 const CLAUDES = `<span class="tag model">Claude's</span>`;
 const $ = (id) => document.getElementById(id);
@@ -238,7 +259,13 @@ const entries = () => view.session.entries || [];
 // An entry by its ID, or by an ID it had before it was moved to another kind.
 const entryOf = (id) => entries().find((e) => e.id === id) || entries().find((e) => (e.was || []).includes(id));
 const live = (kind) => entries().filter((e) => e.kind === kind && !e.dropped);
-const needs = (e) => (e.dropped || !(e.gaps || []).length ? "" : `no ${e.gaps.map((g) => GAPS[g]).join(" or ")} yet`);
+// What is still open on an entry: a missing location or fix, or a fact from the paper that cuts against it.
+const countered = (e) => !e.dropped && (e.gaps || []).includes("counter");
+function needs(e) {
+  if (e.dropped) return "";
+  const missing = (e.gaps || []).filter((g) => GAPS[g]).map((g) => GAPS[g]);
+  return [missing.length ? `no ${missing.join(" or ")} yet` : "", countered(e) ? "the paper says otherwise" : ""].filter(Boolean).join("; ");
+}
 const lastClaude = () => (view.session.turns.findLast((t) => t.role === "claude") || {fields: {}}).fields;
 const clip = (text, n) => (text.length > n ? text.slice(0, n - 1).trimEnd() + "…" : text);
 // A part that stays folded until the reviewer opens it.
@@ -247,8 +274,8 @@ const fold = (key, summary, body, cls = "more") =>
 
 // What is still open in a section, or before the draft. `undecided` must be settled; `gaps` may be accepted.
 function openItems(step) {
-  const kinds = {summary: [], strengths: ["strength"], weaknesses: ["weakness"], comments: []}[step] || ["strength", "weakness"];
-  const gaps = entries().filter((e) => kinds.includes(e.kind) && needs(e)).map((e) => `${e.id} has ${needs(e)}.`);
+  const kinds = {summary: [], strengths: ["strength"], weaknesses: ["weakness"], comments: ["comment"], bias: ["strength", "weakness"]}[step] || ["strength", "weakness", "comment"];
+  const gaps = entries().filter((e) => kinds.includes(e.kind) && needs(e)).map((e) => `${e.id}: ${needs(e)}.`);
   const undecided = step === "weaknesses" ? live("observation").map((e) => `${e.id} is Claude's: make it a weakness or a comment, or drop it.`) : [];
   const all = [...undecided, ...gaps];
   const html = all.length ? `<div class="callout"><div class="label">${undecided.length ? "Before you can accept" : "Still open"}</div><ul>${all.map((x) => `<li>${inline(x)}</li>`).join("")}</ul></div>` : "";
@@ -292,14 +319,16 @@ function anchorKey(kind, label) {
 const REF_RE = /\b(A\d+)\b|\b(?:L|[Ll]ines?\s+)(\d+)(?:\s*[–-]\s*(\d+))?\b|\b(Table|Figure|Fig\.|Equation|Eq\.|Section|Appendix)\s+([A-Z](?:\.\d+)*|\d+(?:\.\d+)*)|\b[Pp]age\s+(\d+)\b|\b([SWCO]\d+)\b/g;
 function linkify(html) {
   return html.replace(REF_RE, (m, ann, l1, l2, kind, label, page, entry) => {
-    if (ann) return view.paper.annotations.some((a) => a.id === ann) ? `<a href="#" data-ref="ann:${ann}">${m}</a>` : m;
+    if (ann) { const a = view.paper.annotations.find((x) => x.id === ann); return a ? `<a href="#" data-ref="ann:${ann}"${tipOf(a.note, ann, a.hex)}>${m}</a>` : m; }
     if (l1) return view.paper.lines[l1] ? `<a href="#" data-ref="line:${l1}:${l2 || l1}">${m}</a>` : m;
     if (kind) { const key = anchorKey(kind, label); return key ? `<a href="#" data-ref="anchor:${key}">${m}</a>` : m; }
     if (page) return +page <= view.paper.pages.length ? `<a href="#" data-ref="page:${page}">${m}</a>` : m;
     const e = entryOf(entry);
-    return e ? `<a href="#" data-entry="${e.id}" title="${esc(e.claim || "")}">${m}</a>` : m;
+    return e ? `<a href="#" data-entry="${e.id}"${tipOf(e.claim, e.id)}>${m}</a>` : m;
   });
 }
+// The attributes behind the hover card: its text, its heading and, for a note, the note's colour.
+const tipOf = (text, head, colour) => (text ? ` data-tip="${esc(text)}" data-tip-head="${esc(head || "")}"${colour ? ` data-tip-colour="${esc(colour)}"` : ""}` : "");
 
 function inline(text) {
   let h = esc(text);
@@ -348,7 +377,9 @@ function drawPaper() {
       const b = document.createElement("span");
       b.className = a.text == null ? "badge" : "badge over";   // only a mark on text carries its words
       b.textContent = a.id;
-      b.title = a.note;
+      b.dataset.tip = a.note;
+      b.dataset.tipHead = a.id;
+      b.dataset.tipColour = a.hex || "";
       b.dataset.ref = `ann:${a.id}`;
       b.style.left = `${(a.bbox[0] / pg.width) * 100}%`;
       b.style.top = `${(a.bbox[1] / pg.height) * 100}%`;
@@ -459,7 +490,7 @@ function drawRail() {
   // A candidate that has not been written out yet is not flagged; the order is set with the arrows.
   const arrows = (e) => (e.dropped || e.kind === "observation" || live(e.kind).length < 2 ? ""
     : `<span class="arrows"><span data-shift="-1" data-id="${e.id}" title="Move up">↑</span><span data-shift="1" data-id="${e.id}" title="Move down">↓</span></span>`);
-  const row = (e) => `<a href="#" class="irow${e.id === openId ? " sel" : ""}" data-entry="${e.id}"><b>${e.id}</b><span>${esc(e.claim || "")}${e.kind === "observation" ? ` ${CLAUDES}` : ""}${needs(e) && e.body ? ` <span class="flag">${needs(e)}</span>` : ""}</span>${arrows(e)}</a>`;
+  const row = (e) => `<a href="#" class="irow${e.id === openId ? " sel" : ""}" data-entry="${e.id}"><b>${e.id}</b><span>${esc(e.claim || "")}${e.kind === "observation" ? ` ${CLAUDES}` : ""}${needs(e) && (e.body || countered(e)) ? ` <span class="flag">${needs(e)}</span>` : ""}</span>${arrows(e)}</a>`;
   const group = (label, list, sub = "") => `<div class="label">${label}${sub ? `<span class="sub"> · ${sub}</span>` : ""}</div>${list.map(row).join("") || `<div class="hint">none yet</div>`}`;
   const order = live("weakness").length > 1 ? (s.ranked ? "most severe first" : "not ordered yet") : "";
   const dropped = entries().filter((e) => e.dropped);
@@ -479,7 +510,7 @@ function bulletRow(id) {
   const e = entryOf(id);
   if (!e) return "";
   return `<div class="bullet${e.dropped ? " dropped" : ""}" data-entry="${e.id}"><b>${e.id}</b><span>${inline(e.bullet || e.claim || "")}${
-    e.dropped ? ` <span class="tag">dropped</span>` : ""}${needs(e) ? ` <span class="flag">${needs(e)}</span>` : ""}</span></div>`;
+    e.dropped ? ` <span class="tag">dropped</span>` : ""}${needs(e) && (e.body || e.text || countered(e)) ? ` <span class="flag">${needs(e)}</span>` : ""}</span></div>`;
 }
 
 const idTag = (a) => (a.id ? `<b>${inline(a.id)}</b> ${(entryOf(a.id) || {}).kind === "observation" ? CLAUDES + " " : ""}` : "");
@@ -507,13 +538,17 @@ function askBlock(a, n, key, settled = "") {
 
 const asksOf = (f, key, settled = () => "") => (f.asks || []).map((a, n) => askBlock(a, n, `${key}-${n}`, settled(a))).join("");
 const filed = (f) => (f.message ? `<div class="hint">${md(f.message)}</div>` : "");
-const changes = (f) => ((f.plan || []).length ? `<div class="label">What changed</div><ul class="plan">${f.plan.map((p) =>
-  `<li><b>${/^\d+$/.test(p.target) ? "Sentence " + p.target : inline(p.target)}</b> <span class="tag">${esc(p.action || "")}</span>${p.because ? ` “${inline(p.because)}”` : ""}</li>`).join("")}</ul>` : "");
+const planRows = (f) => `<ul class="plan">${(f.plan || []).map((p) =>
+  `<li><b>${/^\d+$/.test(p.target) ? "Sentence " + p.target : inline(p.target)}</b> <span class="tag">${esc(p.action || "")}</span>${p.point ? ` ${inline(p.point)}` : ""}${p.because ? ` <span class="hint">“${inline(p.because)}”</span>` : ""}</li>`).join("")}</ul>`;
+const changes = (f) => ((f.plan || []).length ? `<div class="label">What changed</div>${planRows(f)}` : "");
+// What was filed from free talk, and a plan that has not been written out: neither changed any text.
+const filedCard = (f) => `<div class="card claude"><div class="head"><b>Filed</b><span>from what you said; no text was changed</span></div>${md(f.message || "")}${(f.entries || []).map((p) => bulletRow(p.id)).join("")}</div>`;
+const planCard = (f) => `<div class="card claude" id="planCard"><div class="head"><b>Plan</b><span>nothing is changed yet</span></div>${planRows(f)}${filed(f)}</div>`;
 
 // A message of Claude's as it was sent, for the exchange behind a step.
 function claudeCard(t, i) {
   const f = t.fields;
-  const name = {brief: "Brief", outline: (f.plan || []).length ? "Revised outline" : "Outline", summary: "Proposed summary", end: "Interview finished"}[f.kind]
+  const name = {brief: "Overview", filed: "Filed", plan: "Plan", outline: (f.plan || []).length ? "Revised outline" : "Outline", summary: "Proposed summary", end: "Interview finished"}[f.kind]
     || (f.follow_up ? "Follow-up question" : "Question");
   const head = `<b>${name}</b>` + (f.sources || []).map((s) => `<a href="#" class="tag" data-ref="ann:${esc(s)}">${esc(s)}</a>`).join("");
   const sentences = (f.sentences || []).length ? `<ol>${f.sentences.map((s) => `<li>${inline(s.text)}</li>`).join("")}</ol>` : "";
@@ -537,31 +572,36 @@ const turnsOf = (step) => view.session.turns.map((t, i) => [t, i]).filter(([t]) 
 // The step that is open, as it stands now: what is asked, or the section as it will appear.
 // Earlier messages are not repeated here; they are in the exchange, folded away below.
 function nowCards(step) {
-  const s = view.session, claude = turnsOf(step).filter(([t]) => t.role === "claude");
-  if (!claude.length) return "";
+  const s = view.session, all = turnsOf(step).filter(([t]) => t.role === "claude");
+  if (!all.length) return "";
+  // The last thing filed, or a plan still on the table, sits under the step as it stands.
+  const tail = all[all.length - 1][0].fields;
+  const extra = tail.kind === "filed" ? filedCard(tail) : tail.kind === "plan" ? planCard(tail) : "";
+  const claude = all.filter(([t]) => t.fields.kind !== "filed" && t.fields.kind !== "plan");
+  if (!claude.length) return extra;
   const [last, at] = claude[claude.length - 1], f = last.fields;
-  if (step === "brief") return claudeCard(last, at);
-  if (!SECTIONS.includes(step)) return (f.plan || []).length ? `<div class="card claude">${changes(f)}${filed(f)}</div>` : "";
+  if (step === "brief") return claudeCard(last, at) + extra;
+  if (!SECTIONS.includes(step)) return ((f.plan || []).length ? `<div class="card claude">${changes(f)}${filed(f)}</div>` : "") + extra;
   const asked = claude.findLast(([t]) => t.fields.kind === "question");
   if (s.phase === "ask") {
     // The questions stay in view. A change made to one entry meanwhile is reported under them.
     const q = asked ? `<div class="card claude">${asked[0].fields.follow_up ? `<div class="head"><b>One more question</b></div>` : ""}${
       asksOf(asked[0].fields, `t${asked[1]}`) || md(asked[0].fields.message || "")}${(asked[0].fields.asks || []).length ? filed(asked[0].fields) : ""}</div>` : "";
-    return q + (asked && last !== asked[0] && (f.plan || []).length ? `<div class="card claude">${changes(f)}${filed(f)}</div>` : "");
+    return q + (asked && last !== asked[0] && (f.plan || []).length ? `<div class="card claude">${changes(f)}${filed(f)}</div>` : "") + extra;
   }
   const kind = SECTION_KIND[step];
-  if (step === "summary") return `<div class="card claude"><div class="head"><b>Summary</b><span id="wc"></span></div>
-    <textarea id="para"></textarea>${changes(f)}${filed(f)}</div>`;
+  if (step === "summary") return `<div class="card claude"><div class="head"><b>Summary</b><span>written from the paper's own account of itself</span><span id="wc"></span></div>
+    <textarea id="para"></textarea><div id="sents" class="hint"></div>${changes(f)}${filed(f)}</div>` + extra;
   if (kind) return `<div class="card claude"><div class="head"><b>${STEP_NAME[step]} as they stand</b><span>click one to edit it</span></div>
     ${[...live(kind), ...(step === "weaknesses" ? live("observation") : [])].map((e) => bulletRow(e.id)).join("") || `<span class="hint">None.</span>`}
-    ${asksOf(f, `t${at}`)}${changes(f)}${filed(f)}</div>`;
+    ${asksOf(f, `t${at}`)}${changes(f)}${filed(f)}</div>` + extra;
   // The bias test: its questions stay in view, each marked once the reviewer's answer has settled it.
   const plans = claude.filter(([, i]) => asked && i > asked[1]).flatMap(([t]) => t.fields.plan || []);
   const settled = (a) => (a.id ? (plans.findLast((p) => p.target.toUpperCase() === a.id.toUpperCase()) || {}).action || "" : s.ranked ? "ordered" : "");
   const asks = asked ? asked[0].fields.asks || [] : [];
   const open = asks.filter((a) => !settled(a)).length;
   return `<div class="card claude"><div class="head"><b>Bias test</b><span>${asks.length ? `${asks.length - open} of ${asks.length} settled` : "no questions"}</span></div>
-    ${asked ? asksOf(asked[0].fields, `t${asked[1]}`, settled) : ""}${last !== (asked || [])[0] ? asksOf(f, `t${at}`) + changes(f) + filed(f) : filed(f)}</div>`;
+    ${asked ? asksOf(asked[0].fields, `t${asked[1]}`, settled) : ""}${last !== (asked || [])[0] ? asksOf(f, `t${at}`) + changes(f) + filed(f) : filed(f)}</div>` + extra;
 }
 
 // What a finished section put into the review. It stays open to hand edits.
@@ -575,7 +615,7 @@ function resultCard(step) {
 
 // The exchange behind a step: every message as it was sent. Folded away; the record holds it too.
 function exchange(step) {
-  const turns = turnsOf(step).filter(([t]) => step !== "brief" || t.role !== "claude");
+  const turns = turnsOf(step).filter(([t]) => t.role !== "claude" || t.fields.kind !== "brief");
   const cards = turns.map(([t, i]) => card(t, i)).filter(Boolean);
   return cards.length ? fold(`exchange-${step}`, `The exchange so far (${cards.length} ${cards.length === 1 ? "message" : "messages"})`, cards.join(""), "history") : "";
 }
@@ -599,12 +639,23 @@ function draftCards() {
 
 // The last step: the review as it went into the form, kept as an example for later reviews.
 function finalCard() {
+  const s = view.session;
   const reminders = (view.paper.score_reminders || []).map((r) => `<p><b>${esc(r.title)}.</b> ${esc(r.question)}</p>`).join("");
-  return `<div class="card"><div class="head"><b>The review as you submitted it</b></div>
+  const state = s.final ? `<span class="saved">✓ Saved as submitted${s.final_at ? ` at ${esc(s.final_at)}` : ""}</span>`
+    : `<span class="hint">Paste the review as it went into the form, then save it.</span>`;
+  const kept = s.final && s.example ? `<div class="hint">A copy is kept as an example for later reviews: <code>${esc(s.example)}</code></div>` : "";
+  const same = s.final && s.final_unchanged ? `<div class="callout" style="margin-top:8px">This is the draft, unchanged. If you edited the review in the form, paste the submitted text here and save again.</div>` : "";
+  return `<div class="card"><div class="head"><b>After you submit</b><span>the review as it went into the form</span></div>
     <textarea id="finalText" style="min-height:220px"></textarea>
     ${reminders ? `<details class="front" open style="margin-top:8px"><summary>When you set your scores</summary>${reminders}</details>` : ""}
-    <div class="row" style="margin-top:8px"><button class="primary" id="finalBtn">Save as submitted</button>
-    <span class="hint">${view.session.final ? "Saved. A copy is kept as an example for later reviews." : "Paste or edit the review as it went into the form."}</span></div></div>`;
+    <div class="row" style="margin-top:8px"><button class="primary" id="finalBtn">Save as submitted</button>${state}</div>${kept}${same}</div>`;
+}
+
+// The top of the last step: the review is done, where it is, and what to do with it.
+function doneCard() {
+  return `<div class="card"><div class="head"><b>Your review is drafted and saved</b></div>
+    <p>It is in <code>${esc(view.files.review_text)}</code>. Copy each section into the review form with its button, set your scores there and submit.</p>
+    <p class="hint">To change anything, click a point, or say it in the box below: reword, reorder, move or drop, in any section. The draft follows every change.</p></div>`;
 }
 
 // The check against the guidelines: one finding for each thing not met, with a way to act on it.
@@ -619,8 +670,8 @@ function checkCard() {
       : `${f.suggestion && (e || summary) ? `<button class="small" data-finding="${n}" data-v="use">Use this</button>` : ""}
         ${e ? `<button class="small" data-entry="${e.id}">Edit ${e.id}</button>` : summary ? `<button class="small" data-step="summary">Edit the summary</button>` : ""}
         <button class="small" data-finding="${n}" data-v="dismiss">Set aside</button>`;
-    return `<div class="finding${f.status ? " done" : ""}"><div><b>${inline(f.target)}</b> ${inline(f.problem)}</div>
-      ${f.suggestion && !f.status ? `<div class="label">Suggested, from your notes</div><div class="suggest">${md(f.suggestion)}</div>${basis.trim() ? `<div class="row">${basis}</div>` : ""}` : ""}
+    return `<div class="finding${f.status ? " done" : ""}"><div><b>${inline(f.target)}</b> ${f.kind === "fact" ? `<span class="flag">the paper says otherwise</span> ` : ""}${inline(f.problem)}</div>
+      ${f.suggestion && !f.status ? fold(`finding-${n}`, "Suggested rewording, from your notes", `<div class="suggest">${md(f.suggestion)}</div>${basis.trim() ? `<div class="row">${basis}</div>` : ""}`) : ""}
       <div class="row">${buttons}</div></div>`;
   }).join("");
   return `<div class="card" id="checkCard"><div class="head"><b>Check against your guidelines</b>${copyBtn(s.check, "Copy Markdown")}</div>${body}</div>`;
@@ -629,7 +680,7 @@ function checkCard() {
 // The open entry: its text as it will appear in the review, which the reviewer edits directly,
 // then what it rests on. The parts the text was built from are folded away.
 function editorCard() {
-  const e = entryOf(openId), lacks = e.dropped ? [] : e.gaps || [];
+  const e = entryOf(openId), lacks = e.dropped ? [] : (e.gaps || []).filter((g) => GAPS[g]);
   const note = (id) => {
     const a = view.paper.annotations.find((x) => x.id === id) || {}, under = a.text || a.anchor;
     return `<div class="src"><a href="#" class="tag" data-ref="ann:${esc(id)}">${esc(id)}</a><div>${esc(a.note || "")}${
@@ -647,10 +698,15 @@ function editorCard() {
       : `<textarea data-part="${k}" rows="3">${v}</textarea>`;
     return `<div class="part"><div class="label">${label}</div>${input}</div>`;
   }).join("");
+  // A fact from the paper that cuts against the point stays here until the reviewer settles it.
+  const counter = !e.counter || e.dropped ? "" : e.counter_settled
+    ? `<div class="hint">The paper says: ${inline(e.counter)} <span class="tag">settled</span> <a href="#" data-counter="open">Open it again</a></div>`
+    : `<div class="still"><b>The paper says:</b> ${inline(e.counter)}<br>Reword the point, by hand or by saying it below. If it stands as it is, settle it. <button class="small" data-counter="settled">Settled</button></div>`;
   const own = e.text ? `<div class="hint">This is your own wording, so the parts no longer change it. <a href="#" data-rebuild>Build it from the parts again</a></div>` : "";
   return `<div class="card"><textarea id="entryText" data-part="text" placeholder="The point as it will appear in the review">${esc(e.wording || "")}</textarea>
-    ${own}${still}
+    ${own}${counter}${still}
     ${(e.sources || []).length ? `<div class="label">From your notes</div>${e.sources.map(note).join("")}` : ""}
+    ${(e.remarks || []).length ? `<div class="label">What you said about it</div>${e.remarks.map((r) => `<div>“${esc(r)}”</div>`).join("")}` : ""}
     ${e.said ? `<div class="label">Your words</div><div>“${esc(e.said)}”${e.said_ok === false ? ` <span class="flag">not found word for word in your answers</span>` : ""}</div>` : ""}
     ${(e.was || []).length ? `<div class="hint">Was ${esc(e.was.join(", "))}.</div>` : ""}
     ${fold(`parts-${e.id}`, "Parts", fields)}</div>`;
@@ -665,11 +721,18 @@ function drawLog() {
   const parts = s.legacy ? [...s.turns.map(card), draftCards(), checkCard()]
     : openId ? [editorCard()]
     : [past && sel !== "brief" ? resultCard(sel) : nowCards(sel),
-       sel === "draft" ? checkCard() : "", sel === "final" ? draftCards() + finalCard() : "", exchange(sel)];
+       sel === "draft" ? checkCard() : "", sel === "final" ? doneCard() + draftCards() + checkCard() + finalCard() : "", exchange(sel)];
   $("log").innerHTML = parts.join("");
   editable("para", "summary", s.summary);
   editable("finalText", "final", s.final || splitDraft(s.draft)[0]);
-  if ($("finalBtn")) $("finalBtn").onclick = () => post("/api/final", {text: $("finalText").value});
+  const fb = $("finalBtn"), ft = $("finalText");
+  if (fb) {
+    // Saved once is saved: the button comes back when the text changes.
+    const mark = () => { fb.disabled = !!s.final && ft.value === s.final; };
+    mark();
+    ft.addEventListener("input", mark);
+    fb.onclick = () => post("/api/final", {text: ft.value});
+  }
   if ($("saveSummary")) $("saveSummary").onclick = () => post("/api/summary", {text: $("para").value});
 }
 
@@ -678,7 +741,12 @@ function editable(id, key, saved) {
   const box = $(id);
   if (!box) return;
   box.value = edits[key] ?? saved;
-  const count = () => { if ($("wc")) $("wc").textContent = `${box.value.trim().split(/\s+/).filter(Boolean).length} words`; };
+  const count = () => {
+    if ($("wc")) $("wc").textContent = `${box.value.trim().split(/\s+/).filter(Boolean).length} words`;
+    // The summary one numbered sentence to a line, so "the third" can be seen and said.
+    const list = id === "para" && $("sents") ? box.value.trim().split(/(?<=[.!?])\s+/).filter(Boolean) : [];
+    if ($("sents")) $("sents").innerHTML = list.length > 1 ? `<div class="label">Sentence by sentence</div><ol>${list.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>` : "";
+  };
   count();
   box.oninput = () => { edits[key] = box.value; count(); };
 }
@@ -698,13 +766,18 @@ function sayBox(placeholder, buttons) {
     <div class="row">${supported ? `<button id="mic" title="Dictate into the text box you last clicked in">🎙 Dictate</button>` : ""}<span class="hint" id="micHint"></span>${buttons}</div>`;
 }
 // One main button per state: Revise is the main one when nothing else on the screen can be.
-const changeBox = (placeholder, main) => sayBox(placeholder, `<button${main ? ` class="primary"` : ""} id="sendBtn">Revise</button>`);
+// "Plan it first" asks for the plan alone, to be talked over before any text is rewritten.
+const changeBox = (placeholder, main) => sayBox(placeholder, `<button id="planBtn" title="See the plan, sentence by sentence or point by point, before anything is rewritten">Plan it first</button>
+  <button${main ? ` class="primary"` : ""} id="sendBtn">Revise</button>`);
 
 // The entries the open question is about, each with the buttons for its kind.
 function candidates() {
   // From every question of the open section, so a follow-up does not hide them.
+  const kind = SECTION_KIND[view.session.stage];
   const asked = view.session.turns.filter((t) => t.role === "claude" && t.section === view.session.stage && t.fields.kind === "question")
     .flatMap((t) => [...(t.fields.entries || []), ...(t.fields.asks || [])]);
+  // And the points of this kind that were filed from free talk, before or since.
+  asked.push(...entries().filter((e) => e.kind === kind || (kind === "weakness" && e.kind === "observation")).map((e) => ({id: e.id})));
   const seen = new Set();
   const rows = asked.map((x) => {
     const e = x.id && entryOf(x.id);
@@ -758,7 +831,9 @@ function act(extra) {
 }
 
 const reply = (body) => post("/api/reply", body, true);
-const change = (prefix, extra) => { if (unsent.trim()) reply({action: "change", text: prefix + unsent, ...extra}); };
+const change = (prefix, extra, action = "change") => { if (unsent.trim()) reply({action, text: prefix + unsent, ...extra}); };
+// Free talk: filed onto the points it belongs with. The step stays open.
+const talk = () => { if (unsent.trim()) reply({action: "talk", text: unsent}); };
 
 function drawComposer() {
   const c = $("composer"), s = view.session, step = stepNow();
@@ -781,7 +856,7 @@ function drawComposer() {
     if (order) { $("upBtn").onclick = () => act({shift: -1}); $("downBtn").onclick = () => act({shift: 1}); }
     $("moveSel").onchange = (ev) => act({move: ev.target.value});
     $("dropBtn").onclick = () => act({dropped: !e.dropped});
-    if (canSay) $("sendBtn").onclick = () => change(`${e.id}: `);
+    if (canSay) { $("sendBtn").onclick = () => change(`${e.id}: `); $("planBtn").onclick = () => change(`${e.id}: `, {}, "plan"); }
   } else if (sel !== step) {
     c.innerHTML = `<div class="hint">This step is finished. The interview is at <a href="#" data-step="${step}">${STEP_NAME[step]}</a>.</div>`;
   } else if (view.pending) {
@@ -794,44 +869,59 @@ function drawComposer() {
       <div class="row"><button class="primary" id="startBtn">Prepare the interview</button></div>`;
     $("startBtn").onclick = () => post("/api/start", {});
   } else if (step === "brief") {
-    c.innerHTML = err + sayBox("Corrections to the brief, or leave empty", `<button class="primary" id="sendBtn">Start the interview</button>`);
-    $("sendBtn").onclick = () => reply({text: unsent});
+    c.innerHTML = err + sayBox("Talk it through: anything on your mind about the paper, in any order. It is filed onto your points.",
+      `<button id="fileBtn">File this</button><button class="primary" id="sendBtn">Go on to the summary</button>`);
+    $("fileBtn").onclick = talk;
+    $("sendBtn").onclick = () => { if (!unsent.trim() || confirm("What is in the box has not been filed. Go on without it?")) reply({text: ""}); };
   } else if (s.phase === "ask") {
     const fm = view.paper.front_matter;
     const front = step === "summary" ? `<details class="front"><summary>From the paper: abstract, contributions, conclusion</summary>
       <h5>Abstract</h5><p>${esc(fm.abstract)}</p><h5>Contributions</h5><p>${esc(fm.contributions)}</p><h5>Conclusion</h5><p>${esc(fm.conclusion)}</p></details>` : "";
-    c.innerHTML = err + front + candidates() + sayBox("Talk it through: your answer, in your words",
-      `<button class="small" id="skipBtn">Skip this section</button><button class="primary" id="sendBtn">Send</button>`);
+    c.innerHTML = err + front + candidates() + sayBox("Your answer, in your words. A thought about something else can be filed without answering.",
+      `<button class="small" id="skipBtn">Skip this section</button><button id="fileBtn">File a thought</button><button class="primary" id="sendBtn">Send answer</button>`);
+    $("fileBtn").onclick = talk;
     $("sendBtn").onclick = () => reply({text: unsent});
     $("skipBtn").onclick = () => { if (confirm(`Skip this section (${STEP_NAME[step]}) and move on?`)) reply({action: "skip"}); };
   } else if (s.phase === "outline") {
     // What is still open is named beside the button, and the reviewer may accept the section as it is.
-    const open = openItems(step), soft = open.gaps.length > 0, name = STEP_NAME[step].toLowerCase();
-    c.innerHTML = `${err}${open.undecided.length ? open.html : ""}<div class="row"><button${open.undecided.length ? " disabled" : soft ? "" : ` class="primary"`} id="acceptBtn">${soft ? `Accept ${name} anyway` : `Accept ${name}`}</button>
+    const open = openItems(step), soft = open.gaps.length > 0, name = STEP_NAME[step].toLowerCase(), planned = s.plan_open;
+    c.innerHTML = `${err}${open.undecided.length ? open.html : ""}<div class="row">${planned ? `<button class="primary" id="applyBtn">Write it from this plan</button>` : ""}
+      <button${open.undecided.length ? " disabled" : soft || planned ? "" : ` class="primary"`} id="acceptBtn">${soft ? `Accept ${name} anyway` : `Accept ${name}`}</button>
       ${soft && !open.undecided.length ? `<span class="hint">${inline(open.gaps.join(" "))}</span>` : ""}</div>
-      ${changeBox(step === "summary" ? "Or say what to change, e.g. drop the third sentence" : "Or say what to change, or answer what is asked above", open.html !== "")}`;
-    $("acceptBtn").onclick = () => reply({action: "accept", ...(step === "summary" ? {text: $("para").value} : {}), ...(soft ? {force: true} : {})});
+      ${changeBox(planned ? "Or say what to change in the plan" : step === "summary" ? "Say what to change or add, e.g. shorten it, or drop the third sentence" : "Or say what to change, or answer what is asked above", open.html !== "" && !planned)}`;
     // A change to the summary is made to the paragraph as it stands in the box, hand edits included.
-    $("sendBtn").onclick = () => change("", step === "summary" ? {summary: $("para").value} : {});
+    const box = () => (step === "summary" ? {summary: $("para").value} : {});
+    $("acceptBtn").onclick = () => reply({action: "accept", ...(step === "summary" ? {text: $("para").value} : {}), ...(soft ? {force: true} : {})});
+    if (planned) $("applyBtn").onclick = () => reply({action: "apply", ...box()});
+    $("sendBtn").onclick = () => change("", box());
+    $("planBtn").onclick = () => change("", box(), "plan");
   } else {
     // Draft and final: the draft is assembled by the server from the summary and the index.
-    const open = openItems(step), drafted = step === "final";
-    c.innerHTML = `${err}${open.html}
-      ${drafted ? "" : `<div class="row"><button class="${s.check ? "" : "primary"}" id="checkBtn">${s.check ? "Check again" : "Check against your guidelines"}</button>
-        <button class="${s.check ? "primary" : ""}" id="draftBtn">${open.html ? "Draft anyway" : "Draft the review"}</button></div>`}
-      ${changeBox("Or say what to change, e.g. W2: soften the wording")}`;
-    if (!drafted) {
-      $("draftBtn").onclick = () => post("/api/draft", open.html ? {force: true} : {});
-      $("checkBtn").onclick = () => post("/api/check", {});
-    }
+    const open = openItems(step), drafted = step === "final", planned = s.plan_open;
+    // The check runs by itself after the bias test. The draft does not wait for it.
+    const checking = view.checking ? `<span class="hint">Checking against your guidelines… Its findings appear here. You can draft meanwhile.</span>` : "";
+    const checkBtn = view.checking ? "" : `<button class="${s.check || planned ? "" : "primary"}" id="checkBtn">${s.check ? "Check again" : "Check against your guidelines"}</button>`;
+    c.innerHTML = `${err}${open.html}${view.check_error ? `<div class="error">The check did not finish: ${esc(view.check_error)}</div>` : ""}
+      ${drafted ? checking : `<div class="row">${checkBtn}
+        <button class="${(s.check || view.checking) && !planned ? "primary" : ""}" id="draftBtn">${open.html ? "Draft anyway" : "Draft the review"}</button>${checking}</div>`}
+      ${planned ? `<div class="row"><button class="primary" id="applyBtn">Write it from this plan</button></div>` : ""}
+      ${changeBox(planned ? "Or say what to change in the plan" : "Talk about the review: say what to change, anywhere. E.g. soften W2, put C3 first, shorten the summary")}`;
+    if (!drafted) $("draftBtn").onclick = () => post("/api/draft", open.html ? {force: true} : {});
+    if ($("checkBtn")) $("checkBtn").onclick = () => post("/api/check", {});
+    if (planned) $("applyBtn").onclick = () => reply({action: "apply"});
     $("sendBtn").onclick = () => change("");
+    $("planBtn").onclick = () => change("", {}, "plan");
   }
   if (c.querySelector(".points")) c.querySelector(".points").scrollTop = scrolled || 0;
   const say = $("say");
   if (say) {
     say.value = unsent;
     say.oninput = () => { unsent = say.value; keepUnsent(); };
-    say.onkeydown = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); $("sendBtn").click(); } };
+    // Cmd or Ctrl with Enter presses the main button: at the overview that is "File this" once there is text.
+    const lead = () => { const f = $("fileBtn"); if (f && step === "brief") { f.classList.toggle("primary", !!unsent.trim()); $("sendBtn").classList.toggle("primary", !unsent.trim()); } };
+    lead();
+    say.addEventListener("input", lead);
+    say.onkeydown = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); (c.querySelector("button.primary") || $("sendBtn")).click(); } };
     if (!openId) say.focus();
   }
   if ($("mic")) $("mic").onclick = toggleMic;
@@ -942,18 +1032,73 @@ function go(step, id = null) {
   draw();
 }
 
-// The left bar can be hidden, and the choice is remembered.
-function setRail(hidden, keep) {
-  $("app").classList.toggle("norail", hidden);
-  if (keep) { try { localStorage.setItem("interview-rail", hidden ? "hidden" : "shown"); } catch (_) {} track("rail", {hidden}); }
+// The left column: the bar on its edge is dragged to any width, or all the way left to put the column
+// away. A click on the arrow does the same. The width and the choice are remembered.
+const RAIL = {min: 180, max: 520, away: 110};
+function setRail(hidden, keep, width) {
+  const app = $("app"), g = $("grip");
+  app.classList.toggle("norail", hidden);
+  if (width) app.style.setProperty("--rail", `${width}px`);
+  g.title = hidden ? "Show the steps and your points" : "Drag to resize. Drag to the left edge, or click the arrow, to put the column away";
+  g.setAttribute("aria-label", g.title);
+  $("gripTab").textContent = hidden ? "›" : "‹";
+  if (!keep) return;
+  try { localStorage.setItem("interview-rail", hidden ? "hidden" : "shown"); if (width) localStorage.setItem("interview-rail-width", String(width)); } catch (_) {}
+  track("rail", {hidden, ...(width ? {width} : {})});
 }
+(() => {
+  const g = $("grip");
+  let drag = null;
+  g.addEventListener("pointerdown", (e) => {
+    drag = {x: e.clientX, moved: false, tab: !!e.target.closest("#gripTab")};
+    try { g.setPointerCapture(e.pointerId); } catch (_) {}
+    g.classList.add("drag");
+    e.preventDefault();
+  });
+  g.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    if (Math.abs(e.clientX - drag.x) > 4) drag.moved = true;
+    if (!drag.moved) return;
+    drag.width = Math.max(RAIL.min, Math.min(RAIL.max, Math.round(e.clientX)));
+    const away = e.clientX < RAIL.away;
+    setRail(away, false, away ? 0 : drag.width);
+  });
+  const end = () => {
+    if (!drag) return;
+    const away = $("app").classList.contains("norail");
+    if (drag.moved) setRail(away, true, away ? 0 : drag.width);
+    else if (drag.tab || away) setRail(!away, true);   // a click: on the arrow, or anywhere on the handle while the column is away
+    g.classList.remove("drag");
+    drag = null;
+  };
+  g.addEventListener("pointerup", end);
+  g.addEventListener("pointercancel", end);
+})();
+
+// The hover card over a note badge, a note's ID or a point's ID.
+(() => {
+  const tip = $("tip");
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest && e.target.closest("[data-tip]");
+    if (!el || !el.dataset.tip) { tip.style.display = "none"; return; }
+    tip.innerHTML = (el.dataset.tipHead ? `<b>${esc(el.dataset.tipHead)}</b>` : "") + esc(el.dataset.tip);
+    const colour = el.dataset.tipColour || "";
+    tip.style.background = /^#[0-9a-f]{6}$/i.test(colour) ? `color-mix(in srgb, ${colour} 55%, #fffdf2)` : "";
+    tip.style.display = "block";
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left))}px`;
+    tip.style.top = `${r.bottom + h + 12 > innerHeight ? Math.max(8, r.top - h - 8) : r.bottom + 8}px`;
+  });
+  document.addEventListener("scroll", () => { tip.style.display = "none"; }, true);
+  document.addEventListener("mousedown", () => { tip.style.display = "none"; }, true);
+})();
 
 document.addEventListener("click", (e) => {
   const on = (q) => e.target.closest(q);
   let el;
   if ((el = on("[data-ref]"))) { e.preventDefault(); track("link", {to: el.dataset.ref.split(":")[0]}); follow(el.dataset.ref); }
   else if ((el = on("[data-copy]"))) copy(el);
-  else if ((el = on("[data-rail]"))) setRail(!$("app").classList.contains("norail"), true);
+  else if ((el = on("[data-counter]"))) { e.preventDefault(); act({counter: el.dataset.counter}); }
   else if ((el = on("[data-shift]"))) { e.preventDefault(); post("/api/entry", {id: el.dataset.id, shift: +el.dataset.shift}); }
   else if ((el = on("[data-pick]"))) pick(el.dataset.pick, el.dataset.v);
   else if ((el = on("[data-claim]"))) reword(el);
@@ -992,10 +1137,10 @@ function draw() {
   $("app").classList.toggle("legacy", !!s.legacy);
   $("paperName").textContent = view.paper.name;
   const e = openId && entryOf(openId);
-  const rail = `<button class="icon" data-rail title="Show or hide the steps and the index" aria-label="Show or hide the steps and the index">☰</button>`;
+  // The step and its number, so progress shows with the left column away.
   $("head").innerHTML = s.legacy ? `<b>Earlier interview</b><span class="tag">read-only</span>`
-    : e ? `${rail}<button class="small" data-step="${sel}">← ${STEP_NAME[sel]}</button><b>${e.id}</b>${e.kind === "observation" ? CLAUDES : `<span class="tag">${e.kind}</span>`}`
-    : `${rail}<b>${STEP_NAME[sel]}</b>`;
+    : e ? `<button class="small" data-step="${sel}">← ${STEP_NAME[sel]}</button><b>${e.id}</b>${e.kind === "observation" ? CLAUDES : `<span class="tag">${e.kind}</span>`}`
+    : `<b>${HEADING[sel] || STEP_NAME[sel]}</b><span class="tag">${stepAt(sel) + 1} of ${STEPS.length}</span>`;
   if (!s.legacy) drawRail();
   drawLog();
   drawComposer();
@@ -1005,11 +1150,31 @@ function draw() {
   const log = $("log");
   const now = {pane: `${sel} ${openId}`, turns: s.turns.length, check: s.check, draft: s.draft};
   const first = !shown.pane, is = (k) => now[k] !== shown[k];
-  const target = (is("check") && $("checkCard")) || (is("draft") && $("draftCard")) || ((is("turns") || is("pane")) && log.firstElementChild);
+  // The last step opens at its top, where it says the review is drafted and saved.
+  const target = (!first && is("check") && $("checkCard")) || ((is("turns") || is("pane") || is("draft")) && log.firstElementChild);
   if (target) log.scrollTo({top: target.offsetTop - log.offsetTop - 12, behavior: first ? "auto" : "smooth"});
   const sources = lastClaude().sources || [];
   if (!first && is("turns") && !view.pending && sources.length) follow(`ann:${sources[0]}`);
   shown = now;
+  watchCheck();
+}
+
+// While the check runs beside the page, look for its findings. The page is drawn again only when
+// they arrive, so nothing being typed is disturbed in the meantime.
+let checkPoll = null;
+function watchCheck() {
+  if (!view.checking || checkPoll) return;
+  checkPoll = setInterval(async () => {
+    if (busy) return;
+    try {
+      const data = await (await fetch("/api/state")).json();
+      if (data.checking || busy) return;
+      clearInterval(checkPoll);
+      checkPoll = null;
+      view = data;
+      draw();
+    } catch (_) {}
+  }, 3000);
 }
 
 /* ---------- light and dark ---------- */
@@ -1025,7 +1190,7 @@ function setTheme(theme, keep) {
 }
 $("themeBtn").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true);
 setTheme(document.documentElement.dataset.theme);
-try { setRail(localStorage.getItem("interview-rail") === "hidden"); } catch (_) {}
+try { setRail(localStorage.getItem("interview-rail") === "hidden", false, +localStorage.getItem("interview-rail-width") || 0); } catch (_) { setRail(false); }
 $("paperScroll").addEventListener("scroll", markPage, {passive: true});
 
 // If the page is opened or reloaded while the model is still answering, wait for it.

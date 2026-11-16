@@ -19,6 +19,9 @@ Writes, under outputs/reviews/:
     foo.review-draft.md     the two above in one file
     foo.review-final.md     the review as submitted (copied to reviewing/my_reviews/)
     foo.usage.jsonl         what the reviewer did, one line per action, for the stock-take
+
+The reviewer can talk at any step: what is said is stored as sent and filed onto the
+points it belongs with, and it never moves the interview on. Only a button does that.
 """
 
 from __future__ import annotations
@@ -89,7 +92,13 @@ ENTRY_PARTS = ("claim", "body", "where", "undermines", "resolve", "text", "said"
 # Register entries about scores: shown as fixed text on the final step, never asked.
 SCORE_ENTRIES = ("B4", "B14", "B16")
 ID_RE = re.compile(f"[{''.join(LETTERS)}]\\d+")
-GAP_NAMES = {"where": "a location", "resolve": "a fix"}
+GAP_NAMES = {"where": "a location", "resolve": "a fix", "counter": "a look, since the paper says otherwise"}
+# What a `counter` from the model reads when a revision has settled it.
+CLEARED = ("none", "resolved", "settled")
+# Reviewer turns the model owes a reply to wherever the interview stands.
+OWED = ("change", "talk", "plan", "apply")
+# What a point filed from free talk may carry: a label, its notes and the reviewer's words.
+FILED_PARTS = ("id", "claim", "sources", "remark")
 # The material behind one thing the reviewer is asked, by where it comes from.
 ASK_PARTS = (
     ("notes", "From the reviewer's notes"),
@@ -98,16 +107,21 @@ ASK_PARTS = (
     ("register", "Register"),
 )
 ASK_FIELDS = ("question", "id") + tuple(key for key, _ in ASK_PARTS)
-PLAN_FIELDS = ("target", "action", "because")
+PLAN_FIELDS = ("target", "action", "because", "point")
 SECTION_TITLES = {
-    "brief": "Brief", "summary": "Summary", "strengths": "Strengths", "weaknesses": "Weaknesses",
+    "brief": "Overview", "summary": "Summary", "strengths": "Strengths", "weaknesses": "Weaknesses",
     "comments": "Comments", "bias": "Bias test", "draft": "Review", "final": "Review",
 }
 INDEX_TITLES = {
     "strength": "Strengths", "weakness": "Weaknesses (most severe first)", "comment": "Comments",
     "observation": "Claude's observations",
 }
-LABELS = {"answer": "Answer", "skip": "Skipped", "accept": "Accepted", "change": "Change requested"}
+LABELS = {
+    "answer": "Answer", "skip": "Skipped", "accept": "Accepted", "change": "Change requested",
+    "talk": "Talk", "plan": "Plan requested", "apply": "Plan agreed",
+}
+# The step the model is asked for after each kind of reviewer turn.
+NEXT_STEP = {"answer": "outline", "change": "revise", "apply": "revise", "talk": "file", "plan": "plan"}
 RANKED = "The reviewer has ordered the weaknesses by severity, most severe first."
 UNRANKED = "The reviewer has not ordered the weaknesses by severity."
 LEGACY = (
@@ -118,11 +132,15 @@ CHECK_PROMPT = (
     "This message is outside the interview: reply with the fields named here, not the interview's. "
     "Below is the review as the app assembles it from the accepted summary and the index, each "
     "point with its entry ID. Check it against the reviewer's guidelines: go through the checklist "
-    "in section 7 item by item, and the bias checks in section 6 for each weakness. Return one "
-    "finding for each thing that is not met, the most important first, and none if everything is "
-    "met.\n\n"
+    "in section 7 item by item, and the bias checks in section 6 for each weakness. Before that, "
+    "compare every point and the summary with the paper: where one states something about the "
+    "paper that the paper's text contradicts or already answers, return a finding with `kind` "
+    "set to `fact`. Return one finding for each thing that is not met, the findings of kind "
+    "`fact` first, then the most important first, and none if everything is met.\n\n"
     "- `target`: the entry ID it concerns (W2, S1) or Summary.\n"
-    "- `problem`: what is not met, in one sentence.\n"
+    "- `kind`: `fact` when the paper's text says otherwise, and left out for everything else.\n"
+    "- `problem`: what is not met, in one sentence. For a `fact`: what the paper says and where, "
+    "stated as a fact with its location, not as a view.\n"
     "- `suggestion`: the whole point, or the whole summary, reworded so that it is met, in the "
     "form it has below and without its ID, ready to replace the current text. Build it only from "
     "the reviewer's notes, the reviewer's answers in this interview and the point as it stands: "
@@ -136,7 +154,7 @@ CHECK_PROMPT = (
     "The reviewer sets the scores in the review form, so leave the items about scores aside and "
     "do not suggest any."
 )
-FINDING_FIELDS = ("target", "problem", "suggestion", "where")
+FINDING_FIELDS = ("target", "problem", "suggestion", "where", "kind")
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 
 
@@ -153,14 +171,14 @@ REPLY_SCHEMA = {
     "type": "object",
     # `plan` comes before the text it governs, so that the model fills it in first.
     "properties": {
-        "kind": {"type": "string", "enum": ["brief", "question", "outline"]},
+        "kind": {"type": "string", "enum": ["brief", "question", "outline", "filed", "plan"]},
         "plan": _array(_strings(*PLAN_FIELDS), "target", "action"),
         "message": {"type": "string"},
         "asks": _array(_strings(*ASK_FIELDS), "question"),
         "sentences": _array(_strings("text", "job"), "text"),
         "entries": _array(
             {
-                **_strings("id", *ENTRY_PARTS),
+                **_strings("id", *ENTRY_PARTS, "remark", "counter"),
                 "sources": {"type": "array", "items": {"type": "string"}},
                 "drop": {"type": "boolean"},
                 "move": {"type": "string", "enum": list(KINDS)},
@@ -285,7 +303,7 @@ def parse_reply(raw: object) -> dict:
         if not isinstance(item, dict):
             continue
         # An empty part is left out, so a reply cannot blank what the index holds.
-        entry = {"id": _text(item.get("id")).upper(), **_row(item, ENTRY_PARTS)}
+        entry = {"id": _text(item.get("id")).upper(), **_row(item, (*ENTRY_PARTS, "remark", "counter"))}
         if _note_ids(item.get("sources")):
             entry["sources"] = _note_ids(item["sources"])
         if item.get("drop") is True:
@@ -303,7 +321,7 @@ def parse_reply(raw: object) -> dict:
         "sources": _note_ids(fields.get("sources")),
     }
     out: dict = {
-        "kind": fields.get("kind") if fields.get("kind") in ("brief", "outline") else "question",
+        "kind": fields.get("kind") if fields.get("kind") in ("brief", "outline", "filed", "plan") else "question",
         "message": _text(fields.get("message")),
         **{key: value for key, value in lists.items() if value},
     }
@@ -348,14 +366,22 @@ def from_claude(entry: dict) -> bool:
 
 
 def gaps(entry: dict) -> list[str]:
-    """What an entry is still without: "where", "resolve". The reviewer may accept it as it is."""
-    if entry.get("dropped") or entry["kind"] not in ("strength", "weakness"):
+    """What is still open on an entry: "where", "resolve", "counter". The reviewer may accept it as it is.
+
+    A counter is a fact from the paper that cuts against the point. It stays open until the
+    reviewer settles it, whatever the kind of the entry and whoever worded it.
+    """
+    if entry.get("dropped"):
         return []
-    if _text(entry.get("text")):  # the reviewer's own wording: what it holds is theirs to judge
-        return []
-    missing = [] if _text(entry.get("where")) or entry.get("nowhere") else ["where"]
-    if entry["kind"] == "weakness" and not _text(entry.get("resolve")):
-        missing.append("resolve")
+    missing = []
+    # The reviewer's own wording: whether it has a location and a fix is theirs to judge.
+    if entry["kind"] in ("strength", "weakness") and not _text(entry.get("text")):
+        if not (_text(entry.get("where")) or entry.get("nowhere")):
+            missing.append("where")
+        if entry["kind"] == "weakness" and not _text(entry.get("resolve")):
+            missing.append("resolve")
+    if _text(entry.get("counter")) and not entry.get("counter_settled"):
+        missing.append("counter")
     return missing
 
 
@@ -428,10 +454,14 @@ def index_text(entries: list[dict], ranked: bool) -> str:
             lines.append(f"{e['id']} ({'; '.join(tags)}): {e.get('claim', '')}".rstrip())
             if _text(e.get("text")):  # the bullet as the reviewer wrote it: the parts no longer build it
                 lines.append("  text: " + " ".join(e["text"].split()))
-                continue
-            lines += [f"  {p}: {e[p]}" for p in ("body", "where", "undermines", "resolve") if e.get(p)]
-            if e.get("nowhere") and not e.get("where"):
-                lines.append("  where: no single location")
+            else:
+                lines += [f"  {p}: {e[p]}" for p in ("body", "where", "undermines", "resolve") if e.get(p)]
+                if e.get("nowhere") and not e.get("where"):
+                    lines.append("  where: no single location")
+            lines += [f'  remark: "{" ".join(r.split())}"' for r in e.get("remarks", [])]
+            if _text(e.get("counter")):
+                state = "settled by the reviewer" if e.get("counter_settled") else "open"
+                lines.append(f"  counter ({state}): {e['counter']}")
     dropped = [e["id"] for e in entries if e.get("dropped")]
     if dropped:
         lines.append("Dropped: " + ", ".join(dropped))
@@ -457,9 +487,13 @@ def model_message(turn: dict, state: dict) -> str:
         elif kind == "skip":
             text = ""
         head = f"[{LABELS[kind]} · {named(turn['section'])}]" + (f"\n{text}" if text.strip() else "")
-        if kind == "change" and turn["section"] == "summary":  # hand edits included
+        # A change may concern the summary: in its own section, and anywhere after the interview.
+        after = turn["section"] in ("draft", "final") and state["summary"].strip()
+        if kind in ("change", "plan", "apply") and (turn["section"] == "summary" or after):  # hand edits included
             head += f"\n\n[Summary as it stands]\n{state['summary']}"
-    step = {"answer": "outline", "change": "revise"}.get(kind, "ask")
+    step = NEXT_STEP.get(kind, "ask")
+    if step == "ask" and state["stage"] == "summary":
+        step = "outline"  # the summary has no questions: it is written from the paper
     index = index_text(state["entries"], state["ranked"])
     return f"{head}\n\n{index}\n\n[Next: {step} · {named(state['stage'])}]"
 
@@ -472,12 +506,15 @@ def _turn_lines(turn: dict) -> list[str]:
             return ["", f"Corrections from the reviewer: {text}"] if text.strip() else []
         if kind == "answer":
             return ["Answer: " + (text if text.strip() else "(none: wording left to Claude)")]
-        if kind == "change":
-            return [f"Change requested: {text}"]
-        return ["Accepted." if kind == "accept" else "Skipped."]
+        if kind in ("change", "talk", "plan"):
+            return [f"{LABELS[kind]}: {text}"]
+        return [{"accept": "Accepted.", "apply": "Plan agreed."}.get(kind, "Skipped.")]
     f = turn["fields"]
-    if turn["section"] == "brief":
+    if f["kind"] == "brief":
         return [f["message"]]
+    if f["kind"] == "filed":
+        ids = ", ".join(e["id"] for e in f.get("entries", []))
+        return [f"Filed: {f['message']}".rstrip() + (f" ({ids})" if ids else "")]
     lines = [f"Heard as: {f['heard_as']}"] if f.get("heard_as") else []  # about the answer above
     if f.get("follow_up"):
         lines.append(f"Follow-up: {f['message']}".rstrip())
@@ -492,7 +529,8 @@ def _turn_lines(turn: dict) -> list[str]:
         lines.append("Plan:")
         for p in f["plan"]:
             because = f': "{p["because"]}"' if p.get("because") else ""
-            lines.append(f"- {p['target']} {p.get('action', '')}".rstrip() + because)
+            point = f" [{p['point']}]" if p.get("point") else ""
+            lines.append(f"- {p['target']} {p.get('action', '')}".rstrip() + point + because)
     if f["kind"] == "outline":
         outlined = " ".join(s["text"] for s in f.get("sentences", [])) or ", ".join(
             e["id"] for e in f.get("entries", [])
@@ -578,10 +616,13 @@ def parse_check(raw: object) -> list[dict] | None:
     for item in raw["findings"]:
         row = _row(item, FINDING_FIELDS)
         if "target" in row and "problem" in row:
+            if row.get("kind") != "fact":
+                row.pop("kind", None)
             if _note_ids(item.get("sources")):
                 row["sources"] = _note_ids(item["sources"])
             findings.append(row)
-    return findings
+    # What the paper says otherwise comes first: it is what the authors would answer with.
+    return sorted(findings, key=lambda f: f.get("kind") != "fact")
 
 
 def render_check(findings: list[dict]) -> str:
@@ -601,6 +642,7 @@ def new_state() -> dict:
     return {
         "version": 2, "stage": "new", "phase": None, "turns": [], "session_id": None, "annotations": "",
         "summary": "", "entries": [], "ranked": False, "check": "", "findings": [], "draft": "", "final": "",
+        "final_at": "", "example": "",
     }
 
 
@@ -618,12 +660,17 @@ class InterviewApp:
         fast: dict | None = None,
         deep: dict | None = None,
         observations: bool = False,
+        auto_check: bool = False,
     ):
         self.pdf_path = pdf_path
         self.venue = venue
         self.fast = fast or dict(FAST)  # the turns of the interview
         self.deep = deep or dict(DEEP)  # the brief and the check
         self.observations = observations  # whether the model may offer points of its own
+        self.auto_check = auto_check  # whether the check starts by itself after the bias test
+        self.model_lock = threading.Lock()  # one call to the model at a time: they share a conversation
+        self.checker: threading.Thread | None = None  # the check, when it runs beside the page
+        self.check_error = ""
         name = pdf_path.stem
         self.extracted_path = output_dir / "extracted" / f"{name}.md"
         reviews = output_dir / "reviews"
@@ -729,18 +776,45 @@ class InterviewApp:
 
     def _model_turn(self, prompt: str, tier: dict, section: str) -> dict:
         """Ask the model for one turn of the interview. Returns its fields."""
-        raw, session_id = self._call(tier, prompt, self.state["session_id"], REPLY_SCHEMA)
-        fields = parse_reply(raw)
-        self.state["session_id"] = session_id
+        with self.model_lock:
+            raw, session_id = self._call(tier, prompt, self.state["session_id"], REPLY_SCHEMA)
+            self.state["session_id"] = session_id
+        fields = self._bound(parse_reply(raw))
         self._apply(fields)
         self.state["turns"].append({"role": "claude", "section": section, "fields": fields})
+        return fields
+
+    def _said(self) -> str:
+        """The kind of the reviewer's turn that the model is answering, or "" at the start."""
+        turns = self.state["turns"]
+        return turns[-1].get("kind", "") if turns and turns[-1]["role"] == "reviewer" else ""
+
+    def _bound(self, fields: dict) -> dict:
+        """Hold a reply to what the reviewer's turn allows it to change.
+
+        Free talk is filed: it may add candidates and attach the reviewer's words, and no more.
+        A plan changes nothing at all. So neither can rewrite text, whatever the model sends.
+        """
+        said = self._said()
+        if said == "talk":
+            entries = [{k: e[k] for k in FILED_PARTS if k in e} for e in fields.get("entries", [])]
+            fields = {k: v for k, v in fields.items() if k in ("message", "sources", "heard_as")}
+            fields.update(kind="filed", **({"entries": entries} if entries else {}))
+        elif said == "plan":
+            fields = {k: v for k, v in fields.items() if k in ("message", "plan", "sources", "heard_as")}
+            fields["kind"] = "plan"
+        elif fields["kind"] in ("filed", "plan"):
+            fields["kind"] = "question"  # not asked for: read as a question, as any odd reply is
         return fields
 
     def _apply(self, fields: dict) -> None:
         """Put what the model proposed into the summary and the index."""
         state, entries = self.state, self.state["entries"]
-        spoken = bool(state["turns"]) and state["turns"][-1].get("kind") in ("answer", "change")
-        if fields.get("sentences") and state["stage"] == "summary":
+        said = self._said()
+        spoken = said in ("answer", "change", "apply")
+        # The summary is the model's to write in its own section; after the interview only on request.
+        after = state["stage"] in ("draft", "final") and spoken
+        if fields.get("sentences") and (state["stage"] == "summary" or after):
             state["summary"] = " ".join(s["text"] for s in fields["sentences"])
         for proposal in fields.get("entries", []):
             entry = find_entry(entries, proposal["id"])
@@ -760,6 +834,17 @@ class InterviewApp:
                 entry = {"id": proposal["id"], "kind": kind}
                 entries.append(entry)
             parts = {k: proposal[k] for k in (*ENTRY_PARTS, "sources") if k in proposal}
+            if said == "talk" and "sources" in parts:  # filed talk adds notes to a point, never removes one
+                parts["sources"] = list(dict.fromkeys([*entry.get("sources", []), *parts["sources"]]))
+            remark, counter = proposal.get("remark"), proposal.get("counter")
+            if remark and remark not in entry.get("remarks", []):
+                entry["remarks"] = [*entry.get("remarks", []), remark]  # the reviewer's words, as quoted
+            if counter and counter.lower().rstrip(".") in CLEARED:
+                entry.pop("counter", None)
+                entry.pop("counter_settled", None)
+            elif counter and counter != entry.get("counter"):
+                entry["counter"] = counter  # a new fact from the paper: open until the reviewer settles it
+                entry.pop("counter_settled", None)
             if _text(entry.get("text")):
                 # The reviewer's own wording stands. Only a new text replaces it, never the
                 # parts, and only in reply to something the reviewer said.
@@ -803,8 +888,14 @@ class InterviewApp:
         text = payload.get("text") if isinstance(payload.get("text"), str) else ""
         if self.pending():
             raise Refused("Claude has not replied to your last message yet. Ask Claude again first.")
+        open_step = stage == "brief" or phase in ("ask", "outline") or stage in ("draft", "final")
         if stage == "brief" and not action:
             kind = "brief"
+        elif action == "talk" and open_step:
+            # Free talk: stored as sent, filed by the model, and the interview stays where it is.
+            kind = "talk"
+            if not text.strip():
+                raise Refused("Say something to file.")
         elif phase == "ask" and action in ("", "skip"):
             kind = "skip" if action else "answer"
         elif phase == "outline" and action == "accept":
@@ -812,27 +903,41 @@ class InterviewApp:
             self._gate(stage, force=payload.get("force") is True)
             if stage == "summary" and text.strip():
                 state["summary"] = text  # the paragraph as the reviewer left it
-        elif action == "change" and (phase in ("ask", "outline") or stage in ("draft", "final")):
+        elif action in ("change", "plan") and open_step and stage != "brief":
             # During the questions a change concerns an entry the reviewer has opened.
-            kind = "change"
+            # A plan is the same request with the rewriting held back until the plan is agreed.
+            kind = action
             if not text.strip():
                 raise Refused("Say what to change.")
             if stage == "summary" and _text(payload.get("summary")):
                 state["summary"] = payload["summary"]  # the box as the reviewer left it
+        elif action == "apply" and self.plan_open():
+            kind, text = "apply", ""
+        elif action == "apply":
+            raise Refused("There is no plan to write from. Ask for one first.")
         else:
             raise Refused("That step is not open at this point of the interview.")
         if kind == "skip":
             # Candidates that were never written out would block the bias test and the draft.
             for e in state["entries"]:
                 undecided = stage == "weaknesses" and e["kind"] == "observation"
-                if undecided or (e["kind"] == SECTION_KIND.get(stage) and gaps(e)):
+                unwritten = set(gaps(e)) - {"counter"}
+                if undecided or (e["kind"] == SECTION_KIND.get(stage) and unwritten):
                     e["dropped"] = True
         state["turns"].append({"role": "reviewer", "section": stage, "kind": kind, "text": text})
         if kind in ("brief", "accept", "skip"):  # the section is done: on to the next
             state["stage"] = STAGES[STAGES.index(stage) + 1]
-            state["phase"] = "ask" if state["stage"] in SECTIONS else None
+            # The summary opens with its paragraph, written from the paper: it has no questions.
+            state["phase"] = "outline" if state["stage"] == "summary" else "ask" if state["stage"] in SECTIONS else None
         self.save()  # the reviewer's words are on disk before the model is asked
+        if kind == "accept" and state["stage"] == "draft" and self.auto_check:
+            self.check_later()
         self.ask_claude()
+
+    def plan_open(self) -> bool:
+        """True while the last message is a plan of the model's that has not been written out."""
+        turns = self.state["turns"]
+        return bool(turns) and turns[-1]["role"] == "claude" and turns[-1]["fields"]["kind"] == "plan"
 
     def _gate(self, stage: str, force: bool = False) -> None:
         """Refuse to accept a section while an entry is without its location or fix.
@@ -858,7 +963,7 @@ class InterviewApp:
         return (
             bool(turns)
             and turns[-1]["role"] == "reviewer"
-            and (self.state["stage"] in SECTIONS or turns[-1].get("kind") == "change")
+            and (self.state["stage"] in SECTIONS or turns[-1].get("kind") in OWED)
         )
 
     def ask_claude(self) -> None:
@@ -898,6 +1003,9 @@ class InterviewApp:
             move_entry(entries, entry, move)
         if "dropped" in payload:
             entry["dropped"] = payload["dropped"] is True
+        if payload.get("counter") in ("settled", "open") and _text(entry.get("counter")):
+            # What the paper says against the point: the reviewer has reworded it, or it stands.
+            entry["counter_settled"] = payload["counter"] == "settled"
         if payload.get("shift") in (-1, 1):
             # Up or down among the entries of its kind that are still in the review.
             peers = [i for i, e in enumerate(entries) if e["kind"] == entry["kind"] and not e.get("dropped")]
@@ -973,13 +1081,52 @@ class InterviewApp:
     def check(self) -> None:
         """Run the guidelines' checklist over the review as it stands. Scores are not asked for."""
         self._after_interview("The check")
+        self._take_check(self._run_check())
+
+    def _run_check(self) -> object:
+        """Ask the model for the check. Changes nothing but the conversation it continues."""
         prompt = f"{CHECK_PROMPT}\n\n<review>\n{self.review_text(ids=True)}\n</review>"
-        raw, self.state["session_id"] = self._call(self.deep, prompt, self.state["session_id"], CHECK_SCHEMA)
+        with self.model_lock:
+            raw, self.state["session_id"] = self._call(self.deep, prompt, self.state["session_id"], CHECK_SCHEMA)
+        return raw
+
+    def _take_check(self, raw: object) -> None:
         findings = parse_check(raw)
         self.state["findings"] = findings or []
         self.state["check"] = str(raw) if findings is None else render_check(findings)
+        for f in findings or []:
+            # What the paper says against a point is put on the point, where it stays until settled.
+            entry = find_entry(self.state["entries"], f["target"].upper())
+            if f.get("kind") == "fact" and entry and not _text(entry.get("counter")):
+                entry["counter"] = f["problem"]
+        self.check_error = ""
         self.save()
         self.check_path.write_text(self.state["check"].rstrip() + "\n", encoding="utf-8")
+
+    def checking(self) -> bool:
+        return self.checker is not None and self.checker.is_alive()
+
+    def check_later(self) -> None:
+        """Run the check beside the page, so the reviewer can draft and edit while it runs.
+
+        The model is asked outside the request lock; the result is written under it.
+        """
+        if self.checking():
+            return
+
+        def work() -> None:
+            started = time.monotonic()
+            try:
+                raw = self._run_check()
+                with self.busy:
+                    self._take_check(raw)
+            except Exception as exc:  # shown on the page: the check can be run by hand
+                self.check_error = str(exc) or "The check failed."
+            self.log("check", ms=round((time.monotonic() - started) * 1000), **({"error": self.check_error} if self.check_error else {}))
+
+        self.check_error = ""
+        self.checker = threading.Thread(target=work, daemon=True)
+        self.checker.start()
 
     def settle_finding(self, payload: dict) -> None:
         """Take a finding's suggestion as the text of its point, or set the finding aside."""
@@ -989,6 +1136,9 @@ class InterviewApp:
         if type(n) is not int or not 0 <= n < len(findings):
             raise Refused("There is no such finding.")
         finding = findings[n]
+        target = find_entry(self.state["entries"], finding["target"].upper())
+        if payload.get("action") in ("dismiss", "use") and finding.get("kind") == "fact" and target:
+            target["counter_settled"] = True  # either way the reviewer has dealt with the fact
         if payload.get("action") == "dismiss":
             finding["status"] = "dismissed"
         elif payload.get("action") != "use":
@@ -1021,14 +1171,19 @@ class InterviewApp:
             raise Refused("Draft the review first.")
         if not isinstance(text, str) or not text.strip():
             raise Refused("There is no review text to save.")
-        self.state["final"] = text
-        self.save()
         # Named like the past reviews, so the drafting examples pick it up.
         name = f"ACL_ARR_{date.today():%Y_%B}_{self.pdf_path.stem}.md"
         example = review_module.REVIEWING_DIR / "my_reviews" / name
+        self.state.update(final=text, final_at=f"{datetime.now():%H:%M on %d %B %Y}", example=str(example))
+        self.save()
         example.parent.mkdir(parents=True, exist_ok=True)
         for path in (self.final_path, example):
             path.write_text(text, encoding="utf-8")
+        self.log("saved", unchanged=self.final_unchanged())
+
+    def final_unchanged(self) -> bool:
+        """True if the review saved as submitted is the draft, word for word."""
+        return bool(self.state.get("final")) and self.state["final"].strip() == self.review_text().strip()
 
     # -- requests and views --------------------------------------------------
 
@@ -1037,7 +1192,9 @@ class InterviewApp:
         action = ACTIONS.get(path)
         if action is None:
             return 404, {"error": "Not found"}
-        if not self.busy.acquire(blocking=False):
+        # A short wait, not none: the check that runs beside the page holds this for a moment
+        # when it writes its findings.
+        if not self.busy.acquire(timeout=0.5):
             return 409, {"error": "The previous request is still being worked on."}
         started, before, status, error = time.monotonic(), self._snapshot(), 200, ""
         try:
@@ -1117,9 +1274,12 @@ class InterviewApp:
 
     def view(self) -> dict:
         state = new_state() | self.state  # a legacy session lacks the newer keys
-        shown = ("stage", "phase", "turns", "summary", "ranked", "check", "findings", "draft", "final")
+        shown = ("stage", "phase", "turns", "summary", "ranked", "check", "findings", "draft", "final",
+                 "final_at", "example")
         session = {key: state[key] for key in shown}
         session["legacy"] = self.legacy
+        session["plan_open"] = not self.legacy and self.plan_open()
+        session["final_unchanged"] = not self.legacy and self.final_unchanged()
         session["entries"] = [
             e
             | {"bullet": bullet(e), "wording": wording(e), "gaps": gaps(e)}
@@ -1131,6 +1291,8 @@ class InterviewApp:
             "session": session,
             "busy": self.busy.locked(),
             "pending": self.pending() and not self.busy.locked(),
+            "checking": self.checking(),
+            "check_error": self.check_error,
             "files": {
                 "answers": str(self.answers_path),
                 "review_text": str(self.review_text_path),
@@ -1245,6 +1407,11 @@ def main() -> None:
         action="store_true",
         help="Let Claude offer up to three points of its own (off by default; set when an interview starts)",
     )
+    parser.add_argument(
+        "--no-auto-check",
+        action="store_true",
+        help="Do not start the check against the guidelines by itself after the bias test",
+    )
     parser.add_argument("--port", type=int, default=8765)
     efforts = ["default", "low", "medium", "high", "xhigh", "max"]
     parser.add_argument(
@@ -1280,6 +1447,7 @@ def main() -> None:
         fast=tier(args.model, args.effort),
         deep=tier(args.deep_model, args.deep_effort),
         observations=args.observations,
+        auto_check=not args.no_auto_check,
     )
     print(f"Models: interview turns on {app.fast['model']} ({app.fast['effort'] or 'default'} effort); "
           f"brief and check on {app.deep['model']} ({app.deep['effort'] or 'default'} effort)")

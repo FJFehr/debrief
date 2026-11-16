@@ -69,8 +69,8 @@ def summarise(lines: list[dict], name: str) -> str:
             waited[before] += r.get("ms", 0) / 1000
         if r.get("status") != 200:
             row["refused"] += 1
-        elif r["path"] == "/api/reply" and body.get("action") == "change":
-            row["spoken changes"] += 1
+        elif r["path"] == "/api/reply" and body.get("action") in ("change", "apply"):
+            row["spoken changes"] += 1  # a plan that was agreed is a change; the plan itself is not
         elif r["path"] == "/api/reply" and not body.get("action"):
             row["answers"] += 1
         elif r["path"] in ("/api/entry", "/api/summary", "/api/finding"):
@@ -129,6 +129,30 @@ def summarise(lines: list[dict], name: str) -> str:
     dictated = Counter(data(x).get("into", "?") for x in page if x.get("what") == "dictate" and data(x).get("on"))
     rail = Counter("hidden" if data(x).get("hidden") else "shown" for x in page if x.get("what") == "rail")
     discards = Counter("discarded" if data(x).get("discarded") else "kept" for x in page if x.get("what") == "discard")
+
+    # Talk, plans and what the paper says otherwise: the parts added after the third round of use.
+    def sent(action: str) -> Counter:
+        return Counter((r.get("moved") or [r.get("stage") or "?"])[0].split("/")[0] for r in requests
+                       if r["path"] == "/api/reply" and r.get("status") == 200 and (r.get("body") or {}).get("action") == action)
+
+    raised = settled = 0
+    for r in requests:
+        for edit in r.get("entries", []):
+            changed = edit.get("set", {})
+            raised += bool((edit.get("new") or {}).get("counter")) + bool(changed.get("counter", [None, None])[1])
+            settled += changed.get("counter_settled", [None, None])[1] is True
+    saved = [x.get("unchanged") for x in lines if x.get("event") == "saved"]
+    kept = any(r["path"] == "/api/final" and r.get("status") == 200 for r in requests)  # a log from before this was recorded
+    final = ("the draft unchanged" if saved[-1] else "differs from the draft") if saved else "saved" if kept else "not saved"
+    waits = [x.get("ms", 0) / 1000 for x in lines if x.get("event") == "check"]
+    out.append("## Talk, plans and facts\n\n" + "\n".join([
+        f"- Free talk filed, by step: {counted(sent('talk'))}",
+        f"- Plans asked for, by step: {counted(sent('plan'))}",
+        f"- Plans written out, by step: {counted(sent('apply'))}",
+        f"- Facts from the paper put on a point: {raised}, settled by the reviewer: {settled}",
+        f"- The check beside the page: {', '.join(f'{w:.0f} s' for w in waits) or 'not run'}",
+        f"- The review saved as submitted: {final}",
+    ]))
     findings = Counter((r.get("body") or {}).get("action", "?") for r in requests
                        if r["path"] == "/api/finding" and r.get("status") == 200)
     out.append("## What was used on the page\n\n" + "\n".join([

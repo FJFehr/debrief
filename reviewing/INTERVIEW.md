@@ -20,17 +20,17 @@ The interview exists to get the reviewer's judgement stated clearly and to test 
 6. **Coverage.** Record which sections and pages have no notes.
 7. **Bias signals.** Go through the register and record which signals are present, with the note or location that triggered each.
 
-Step 1 ends with a short brief to the reviewer: the claim map in a few lines, how the notes were sorted, anything the notes ask for that the paper already contains, and what the interview will cover. The reviewer can correct the brief before the questions start.
+Step 1 ends with a short overview for the reviewer: how the notes were sorted, anything the notes ask for that the paper already contains, the parts without notes, and the claim map in a few lines. The reviewer then talks the paper through, as much or as little as they like, before the first section opens.
 
 ## Step 2: Interview
 
 ### Order
 
-The interview follows the review form, one section at a time, and ends with the bias test. The summary section opens with the idea, so the idea is settled before anything else is discussed.
+The interview follows the review form, one section at a time, and ends with the bias test. Before the first section, and at any point after it, the reviewer can talk freely about the paper: Claude files what is said onto the points it belongs with and adds nothing. Talk never moves the interview on.
 
 | Section | What Claude asks | What is settled |
 |---|---|---|
-| 1. Summary | The idea in one sentence; the closest prior work and what is new; the reviewer's description of the paper | The summary paragraph |
+| 1. Summary | Nothing: Claude writes the paragraph from the paper's abstract, contributions, introduction and conclusion, and the reviewer directs the shaping | The summary paragraph |
 | 2. Strengths | Each positive remark in the notes; anything else that argues for acceptance | The strengths |
 | 3. Weaknesses | Each concern in the notes, related ones merged; the parts of the paper with no notes | The weaknesses |
 | 4. Comments | Everything left in the notes: questions, suggestions, minor issues, typos | The comments |
@@ -40,10 +40,12 @@ Each section runs the same way:
 
 1. **Ask.** Claude puts the section's questions.
 2. **Outline.** From the answers, Claude writes the section as it will appear in the review.
-3. **Revise.** The reviewer edits the outline or says what to change, and Claude revises it.
+3. **Revise.** The reviewer edits the outline or says what to change, and Claude revises it. The reviewer can ask for the plan first: Claude sets out what each sentence or point will carry, and writes only once the plan is agreed.
 4. **Accept.** The reviewer accepts the section and the next one opens.
 
-Three things the register calls for are part of the sections for every paper: the idea and what is new (B5) in the summary, the case for acceptance (B15) in the strengths, and the parts with no notes (B3) in the weaknesses. They are not asked again in the bias test.
+Two things the register calls for are part of the sections for every paper: the case for acceptance (B15) in the strengths, and the parts with no notes (B3) in the weaknesses. They are not asked again in the bias test.
+
+The summary is the one section a model drafts: it is a description of the paper, taken from the paper, and holds no judgement. A venue may not allow even that. If yours does not, write the summary yourself in the box.
 
 ### Rules for questions
 
@@ -65,11 +67,13 @@ Before a section is accepted:
 - A weakness is pinned: it has a location and a fix, and names the claim it undermines. The fix is the reviewer's to give. Claude asks what would resolve the weakness and does not propose it.
 - A requested experiment names the claim that needs it, or it is a suggestion and goes to the comments.
 
+Where the paper states something that cuts against a point (the point says a detail is missing and the paper gives it), Claude puts that fact on the point, with its location and without a view. It stays there until the reviewer rewords the point or says it stands.
+
 The order of the weaknesses, most severe first, is the reviewer's to set. Claude does not rank them.
 
 ## Step 3: Check
 
-1. Claude runs the checklist in section 7 of the guidelines and the bias checks in section 6 over the accepted sections, and says what is not met and where. Claude does not check or suggest a score.
+1. Claude runs the checklist in section 7 of the guidelines and the bias checks in section 6 over the accepted sections, and says what is not met and where, starting with anything the paper's text contradicts. Claude does not check or suggest a score.
 2. The reviewer fixes what is not met, in the section concerned.
 
 ## Step 4: Draft

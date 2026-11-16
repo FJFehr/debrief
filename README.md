@@ -11,7 +11,7 @@ The aim is better paper reviews. Spend your time reading and making notes. Turni
 
 - 🎙️ **Gets your judgement out quickly.** An interview about your notes that follows the review form, one section at a time, by voice or typing.
 - ⚖️ **Checks for bias and weak reasoning.** Each point is tested against the paper and a [register](reviewing/BIASES.md) of known reviewing biases. It starts from the ARR reviewer guidelines and will grow.
-- 📝 **Writes a structured review.** In the venue's template, each point traced to something you said.
+- 📝 **Writes a structured review.** In the venue's template, each point traced to something you said. The summary is a plain description, drawn from the paper.
 
 Read, annotate, talk it through, edit, submit.
 
@@ -33,7 +33,7 @@ uv run interview --paper path/to/annotated-paper.pdf
 
 A page opens: your points on the left, the interview in the middle, your paper on the right.
 
-1. **Prepare the interview**, then answer by typing or **Dictate**, and accept each section.
+1. **Prepare the interview**, talk your notes through, then answer by typing or **Dictate**, and accept each section.
 2. **Draft the review**.
 3. **Copy Markdown** for each section into the review form. Edit it there, set the scores and submit.
 4. **Save as submitted** keeps your final text as an example for later reviews. That is [the end](docs/review-interview.md#where-it-ends).

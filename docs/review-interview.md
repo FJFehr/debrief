@@ -2,7 +2,7 @@
 
 How an annotated PDF becomes a review. For the short version, see the quick start in the [README](../README.md).
 
-ARR does not let a generative model write the first draft of a review. Here the first draft is what you say in the interview. The model words each section of the review from your answers, you accept or change it, and the app puts the review together from the sections you accepted. Whether this, and the model you use, fit your venue's rules is for you to check before a real review: see [Model and privacy](#model-and-privacy).
+ARR does not let a generative model write the first draft of a review. Here the first draft of every judgement is what you say in the interview. The model words the strengths, weaknesses and comments from your answers, you accept or change them, and the app puts the review together from the sections you accepted. There is one exception: the summary, which describes the paper and judges nothing, is drafted by the model from the paper itself and shaped by you. Whether this, and the model you use, fit your venue's rules is for you to check before a real review: see [Model and privacy](#model-and-privacy).
 
 Debrief is not a language model reviewing for you. We do not condone using a language model to come up with the points of a review, or to decide whether a paper is accepted or rejected.
 
@@ -17,8 +17,9 @@ uv run interview --paper reviews/<name>.pdf
 | `--paper` | Path to the annotated PDF |
 | `--restart` | Start again. The saved interview and record are kept once, as `.bak` files |
 | `--observations` | Let Claude offer up to three points of its own in the weaknesses section, as `O1`, `O2`, … You make each one a weakness or a comment, or drop it (off by default). Not for venues that require you to write the content of the review yourself, such as ARR |
-| `--model`, `--effort` | Model and thinking effort for every turn of the interview after the brief (default: Opus 5.5, low) |
-| `--deep-model`, `--deep-effort` | Model and thinking effort for the brief and the check (default: Fable 5.2, its own default effort) |
+| `--model`, `--effort` | Model and thinking effort for every turn of the interview after the overview (default: Opus 5.5, low) |
+| `--deep-model`, `--deep-effort` | Model and thinking effort for the overview and the check (default: Fable 5.2, its own default effort) |
+| `--no-auto-check` | Do not start the check by itself when the bias test is accepted |
 | `--port` | Port for the page (default 8765) |
 | `--output-dir` | Output root (default `outputs`) |
 | `--no-browser` | Do not open the page |
@@ -29,15 +30,26 @@ Run the same command again to continue an interview. One saved by the earlier, f
 
 The page has three columns:
 
-- 🧭 **Left: the flow and the index.** The flow lists the steps: Brief, Summary, Strengths, Weaknesses, Comments, Bias test, Draft, Final. A finished step has a tick; click it to see it again, with its result and the exchange behind it. Under the flow is the index of your points, in the order of the review form: the summary, strengths (`S1`, …), weaknesses (`W1`, `W2`, …) most severe first, and comments (`C1`, …). The ☰ button at the top of the middle column hides the left column and brings it back.
+- 🧭 **Left: the flow and the index.** The flow lists the steps: Overview, Summary, Strengths, Weaknesses, Comments, Bias test, Draft, Final. A finished step has a tick; click it to see it again, with its result and the exchange behind it. Under the flow is the index of your points, in the order of the review form: the summary, strengths (`S1`, …), weaknesses (`W1`, `W2`, …) most severe first, and comments (`C1`, …). Drag the bar on the column's right edge to make it wider or narrower, or all the way to the left to put it away; the arrow on the bar does the same with a click. The heading of the middle column shows the step and its number, so you know where you are with the column away.
 - 💬 **Middle: the interview**, one step at a time. A step shows only where it stands now: the questions, or the section as it will appear in the review. Each question has your notes under it; what the paper says is folded under "From the paper". Earlier messages are folded under "The exchange so far". Answer by typing or with the dictation button, which writes into the text box you last clicked in.
 - 📄 **Right: the PDF**, with your highlights as you made them and an ID badge on every note. References in a message (`A26`, `L267`, `Table 2`, `Section 3.3.2`) are links that scroll the paper to that spot.
 
-Click an entry in the index, or its ID anywhere in a message, to open it; hovering over an ID shows its claim. An open entry shows its text as it will appear in the review, and you edit that text directly. Once you have, it is your wording: a later revision by the model does not replace it unless you ask for a change to that entry. Under the text are the notes it rests on, each with the words of the paper it is attached to. The parts the text was first built from (its label in the index, its location, its fix) are folded under "Parts". You can also move the entry to another kind (a weakness to a comment, say), drop or restore it, and move it up or down in the order of severity (the arrows on an index row do the same). None of that needs the model. At any point after the brief you can instead say what to change and let the model revise it.
+Click an entry in the index, or its ID anywhere in a message, to open it. Hovering over a note's badge or ID shows the note at once in a large card in the note's own colour; hovering over a point's ID shows its claim the same way. An open entry shows its text as it will appear in the review, and you edit that text directly. Once you have, it is your wording: a later revision by the model does not replace it unless you ask for a change to that entry. Under the text are the notes it rests on, each with the words of the paper it is attached to. The parts the text was first built from (its label in the index, its location, its fix) are folded under "Parts". You can also move the entry to another kind (a weakness to a comment, say), drop or restore it, and move it up or down in the order of severity (the arrows on an index row do the same). None of that needs the model. At any point after the overview you can instead say what to change and let the model revise it.
 
 Colour tells you whose a thing is. Teal marks what is yours: your answers, the step you are on, links and the main button. Gold marks a point Claude raised itself, until you adopt or drop it. Brick marks what is still open, and errors. The page of the paper and your highlights keep their own colours. The button at the top right switches between light and dark; the page starts from your system setting and remembers your choice.
 
+### Talking, and planning before a rewrite
+
+You do not have to answer what a step asks before you can say something.
+
+- 🗣️ **Talk at any step.** The overview's box is for talking the paper through before the first section: say what is on your mind, in any order, and press **File this** as often as you like. Each remark is stored as you sent it and filed: onto the point it belongs with, or as a new candidate strength, weakness or comment, which is then waiting in its section. A section's questions have **File a thought** beside **Send answer** for the same purpose. Filing never writes or changes any text, and it never moves the interview on. Only a button does that.
+- 🗺️ **Plan it first.** Every box for a change has two buttons. **Revise** rewrites at once. **Plan it first** returns the plan alone: one line for each sentence of the summary, or each point, with what it will carry and whether it is kept, cut, merged or shortened. Nothing is changed yet. Say what to change in the plan as often as you like, then press **Write it from this plan**.
+
+### What is still open on a point
+
 A weakness is meant to have a location (where it shows) and a fix (what would resolve it), and a strength a location. A point without one is marked "no location yet" or "no fix yet". Open it and the places its notes sit in are offered as locations, to take with one click; where a point has no one place to cite, tick "No single location" under "Parts". You can also accept the section as it is: the button then reads "Accept … anyway". A point you worded yourself is not marked, since what it holds is yours to judge.
+
+A point of any kind is also marked when **the paper says otherwise**: you wrote that something is missing or unexplained, and the paper contains it. The model puts the fact on the point, with its location and without a view. Open the point to read it. Reword the point, or press **Settled** if it stands as it is. Until then the section is accepted with "Accept … anyway", and the draft names the point as open.
 
 ## Stages
 
@@ -49,8 +61,8 @@ flowchart TD
     GUIDE[("reviewing/<br/>guidelines, bias register,<br/>interview process,<br/>venue form, past reviews")]:::file
 
     subgraph INT["2 · Interview"]
-        B["Brief<br/>claim map, notes sorted,<br/>what the paper answers"]:::tool
-        SUM["Summary<br/>the idea, what is new,<br/>your description of the paper"]:::you
+        B["Overview<br/>notes sorted, what the paper<br/>answers, then you talk it through"]:::tool
+        SUM["Summary<br/>drafted from the paper,<br/>shaped by you"]:::you
         STR["Strengths<br/>each one: keep or drop"]:::you
         WEAK["Weaknesses<br/>each one: weakness,<br/>comment or drop"]:::you
         COM["Comments<br/>questions, suggestions,<br/>minor issues and typos"]:::you
@@ -61,7 +73,7 @@ flowchart TD
     REC[/"answers.md<br/>your answers, verbatim,<br/>and the index of your points"/]:::file
 
     subgraph DRAFT["3 · Draft"]
-        CHK["Check (optional)<br/>your checklist<br/>and bias checks"]:::tool
+        CHK["Check<br/>what the paper says otherwise,<br/>your checklist and bias checks"]:::tool
         DR["Draft the review<br/>the sections you accepted,<br/>in the venue's review form"]:::tool
         CHK --> DR
     end
@@ -87,23 +99,23 @@ flowchart TD
 Yellow is you, blue is Debrief, grey is a file. Rounded boxes start and end the flow, square boxes are steps, slanted boxes are files, and the cylinder is the set of documents you keep in [reviewing/](../reviewing/). Dotted arrows mean "is read by".
 
 1. **Extraction** turns the PDF into text with the annotations in place (see [annotation-format.md](annotation-format.md)), plus the positions the page needs for its links.
-2. **Interview.** It follows the review form, by the process in [reviewing/INTERVIEW.md](../reviewing/INTERVIEW.md): a brief, one section for each part of the review, then the bias test. The server writes the record, so each answer is stored exactly as sent.
-   - **Brief.** The model reads the paper against your notes and reports: the paper's claims, how it sorted your notes, what the paper already answers, and the parts without notes. You correct it or go on.
-   - **Summary.** You give the idea in one sentence, the closest prior work and what is new, and your description of the paper. The outline is the summary paragraph: five or six plain sentences, built only from what you described.
+2. **Interview.** It follows the review form, by the process in [reviewing/INTERVIEW.md](../reviewing/INTERVIEW.md): an overview, one section for each part of the review, then the bias test. The server writes the record, so everything you say is stored exactly as sent.
+   - **Overview.** The model reads the paper against your notes and reports: how it sorted your notes, what the paper already answers, the parts without notes, and the paper's claims. Then you talk the paper through, as much or as little as you like, and go on.
+   - **Summary.** It has no questions. The model drafts the paragraph from the paper's own account of itself: the abstract, the contributions, the introduction and the conclusion. Five or six plain sentences, in the paper's terms, with no judgement. You shape it: edit it, say what to change, or plan it first. It is shown one numbered sentence to a line while you do.
    - **Strengths.** Each positive remark in your notes is a candidate, to keep or drop. You add anything else that argues for acceptance.
    - **Weaknesses.** Each concern in your notes is a candidate, related notes merged, at most five. You make each one a weakness or a comment, or drop it. One more question covers the parts of the paper without notes.
    - **Comments.** Everything left in your notes: questions, suggestions, minor issues and typos. You confirm the list, move or drop items, and add what is missing. They go into the review as one list, in the order you set.
    - **Bias test.** It comes once, after the four sections, and covers every strength and weakness as it now reads. Where a signal from the [bias register](../reviewing/BIASES.md) is present, you get one question on that point: the condition under which it would not stand, and whether that condition holds. "Why is this asked?" shows the register entry behind it, what set it off and where the entry comes from, with a link where the source is a page. The questions stay on screen while you answer, each marked once your answer has settled it. Your answer decides whether the point stays, is reworded, moves to comments or is dropped. If you have two or more weaknesses and have not put them in order of severity, you are asked to.
-3. **Draft.** The Draft step has two buttons.
-   - **Check against your guidelines** (optional) runs the checklist and bias checks from your guidelines over the review as it stands and lists what is not met, one finding for each point. Where your notes and answers hold what the fix needs, the finding comes with a suggested rewording of the point, built from them and tied to the place in the paper your notes sit in. It adds no reason of its own. **Use this** takes the suggestion as the point's text, **Edit** opens the point, and **Set aside** dismisses the finding. Nothing changes until you choose.
+3. **Draft.** The check starts by itself when you accept the bias test, and you do not have to wait for it: draft, copy and edit while it runs.
+   - **The check** compares each point with the paper, then runs the checklist and bias checks from your guidelines over the review as it stands. It lists what is not met, one finding for each point, starting with the points where the paper says otherwise; each of those is also put on its point. A finding is two lines, with its suggested rewording folded under it. **Check again** runs it once more. Where your notes and answers hold what the fix needs, the finding comes with a suggested rewording of the point, built from them and tied to the place in the paper your notes sit in. It adds no reason of its own. **Use this** takes the suggestion as the point's text, **Edit** opens the point, and **Set aside** dismisses the finding. Nothing changes until you choose.
    - **Draft the review** puts the review together in the venue's form, from the summary you accepted and the index, weaknesses most severe first. No model writes at this step. While an entry has a gap, the app says so and drafts only if you choose "Draft anyway". A point that began as one of Claude's observations is marked `[Claude]`. The review is followed by a part for you only: the notes and your words behind each point, then the points that came from Claude, the dropped points and any drafted with a gap.
-4. **Final.** The step shows the draft, one block for each field of the form with a copy button, and under it a box that starts with the same text. When you have submitted, put the review as you submitted it in that box and press **Save as submitted**. See [Where it ends](#where-it-ends).
+4. **Final.** The step opens with "Your review is drafted and saved" and where the file is. Under it is the draft, one block for each field of the form with a copy button. The box at the foot of the column takes changes to the whole review, several at once and in any section, the summary included: "soften W2, put C3 first, shorten the summary". Last comes "After you submit", a box that starts with the draft. When you have submitted, put the review as you submitted it there and press **Save as submitted**. The page then says when it was saved and where the example is kept, and tells you if what you saved is the draft unchanged. See [Where it ends](#where-it-ends).
 
 Each section of the interview, and the bias test, runs the same way:
 
 - ❓ **Ask.** The questions, with the candidate points, each with buttons to keep, move or drop it. You can skip a section.
 - 📝 **Outline.** The model writes the section as it will appear in the review, from your answer.
-- ✏️ **Revise.** You edit it by hand, or say what to change. The model then revises and lists what it changed, with your words behind each change.
+- ✏️ **Revise.** You edit it by hand, or say what to change. The model then revises and lists what it changed, with your words behind each change. With **Plan it first** you agree the plan before anything is rewritten.
 - ✅ **Accept.** The section is settled. Its entries stay open to changes in the index.
 
 Scores, confidence and the recommendation are yours. You set them in the review form; Debrief never asks for them and suggests none. The Final step shows the register's reminders about scores, as fixed text, for when you set them.
@@ -148,7 +160,7 @@ While you work, the app keeps a usage log. It has one line for every request, wi
 uv run stocktake --paper reviews/<name>.pdf
 ```
 
-This prints a summary: the time each step took and how much of it was waiting for the model, what you changed by voice and by hand, what was refused, and which parts of the page you used. It is the basis for deciding, after each paper, what to keep and what to cut.
+This prints a summary: the time each step took and how much of it was waiting for the model, what you changed by voice and by hand, what was refused, and which parts of the page you used. It also counts the talk you filed, the plans you asked for and had written out, the facts from the paper that were put on a point and how many you settled, and whether the review you saved differs from the draft. It is the basis for deciding, after each paper, what to keep and what to cut.
 
 The log quotes you and the paper, so it stays in `outputs/`. Nothing in it leaves your machine.
 
@@ -172,14 +184,14 @@ Edit these in place. They are read from this folder only.
 
 The model is the installed `claude` command-line tool, using your Claude Code login. It is called without tools, connectors, plugins or your personal Claude Code settings, so only the prompts in this repo shape the review. The page itself answers only to your own browser on this machine.
 
-Two settings are used. The steps that need analysis and happen once run on Fable 5.2: the brief, where the paper is read against your notes, and the check. Every other turn of the interview runs on Opus 5.5 at low effort; you wait on these about ten times, more if you ask for revisions. The draft needs no model: the app puts it together from the sections you accepted. The split rests on one measurement, made on a question turn of the earlier five-question interview: Fable at default effort took 97 s and Opus at low effort 36 s, and both produced the same number of points and register entries with every cited figure and line reference found in the paper. That is one sample, not repeated on the section flow, so treat it as a guide.
+Two settings are used. The steps that need analysis and happen once run on Fable 5.2: the overview, where the paper is read against your notes, and the check, which runs beside the page. Every other turn of the interview runs on Opus 5.5 at low effort; you wait on these about ten times, more if you ask for revisions. The draft needs no model: the app puts it together from the sections you accepted. The split rests on one measurement, made on a question turn of the earlier five-question interview: Fable at default effort took 97 s and Opus at low effort 36 s, and both produced the same number of points and register entries with every cited figure and line reference found in the paper. That is one sample, not repeated on the section flow, so treat it as a guide.
 
 ### Before you use it on a real submission
 
 A submission under review is confidential. Debrief sends all of it to a language model, so using it is only acceptable where both of these hold.
 
 - 🔒 **The tool is privacy-preserving.** The ACL policy describes such a tool as one that does not store what you send, and a non-privacy-preserving one as a tool that stores input data, typically on a third party's servers. A reviewer may not put a submission, any part of it, or the review itself into a non-privacy-preserving tool. Whether your model account qualifies depends on its data terms, not on Debrief. Check them.
-- 📜 **The use is one your venue approves.** ARR requires that you read the paper fully and write the content and argument of the review yourself, and does not permit generative assistance for the first draft. Paraphrasing your own review is given as a reasonable use. Debrief is built so that every judgement comes from your notes and answers, but the model also reads the paper and prepares a brief, which is more than a language edit. If you are not sure your venue allows that, ask the chairs or do not use it.
+- 📜 **The use is one your venue approves.** ARR requires that you read the paper fully and write the content and argument of the review yourself, and does not permit generative assistance for the first draft. Paraphrasing your own review is given as a reasonable use. Debrief is built so that every judgement comes from your notes and answers, but the model also reads the paper, prepares an overview and drafts the summary paragraph from the paper, which is more than a language edit. The summary describes and does not judge, but it is text a model wrote first. If your venue does not allow that, write the summary yourself in its box; if you are not sure about the rest, ask the chairs or do not use it.
 
 The rules are in the [ARR reviewer guidelines](https://aclrollingreview.org/reviewerguidelines) and the [ACL Policy on Publication Ethics](https://www.aclweb.org/adminwiki/index.php/ACL_Policy_on_Publication_Ethics), as read in November 2026. Read them yourself: they change, and other venues differ.
 

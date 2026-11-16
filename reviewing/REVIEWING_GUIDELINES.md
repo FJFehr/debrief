@@ -42,13 +42,13 @@ One paragraph of five or six sentences, about 60 to 100 words. Each sentence has
 2. The approach it takes.
 3. How the method works.
 4. What it is evaluated on and the direction of the result, one sentence for each evaluation.
-5. The main contribution. This sentence begins "The main contribution is" and comes from what the reviewer said is new.
+5. The main contribution. This sentence begins "The main contribution is" and states the contribution as the paper claims it.
 
 - No figures. Results are stated as direction only: improves, similar, lower cost.
 - No amplifiers or superlatives: not "substantial", "significantly", "highest", "state of the art", "novel".
 - Names of the method and of the benchmarks only. No component models, training data or settings.
-- Only what the reviewer described, with exact names taken from the paper.
-- No criticism here.
+- Drawn from the paper's own account of itself (abstract, contributions, introduction, conclusion), in the paper's terms and with its exact names. The reviewer shapes and corrects it.
+- No criticism and no praise here: the summary describes.
 
 ### Strengths
 
