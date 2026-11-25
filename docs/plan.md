@@ -304,11 +304,19 @@ What would show it worked, on the next paper: the summary takes under five minut
 2. **The check runs by itself** when the bias test is accepted.
 3. **The left column starts shown.** The bar between it and the interview can be dragged: to any width, and all the way to the left to put the column away. A slim handle with an arrow stays at the edge to bring it back, by a click or a drag. The width and the state are remembered. This replaces the ☰ button of note 1.
 
+## Venue policy: inside ICML's Policy B
+
+Decided on 2026-11-25, after reading ICML 2026's policy for language models in reviewing. Policy B allows a model to help the reviewer understand the paper and to polish the review. It does not allow asking a model to summarise the paper, to find strengths or weaknesses, or to suggest key points, an outline or questions for the authors. Debrief is to stay inside it.
+
+- [x] **The model raises no points.** The `--observations` option is removed, with the setting behind it. A point of the model's own that arrives anyway is never taken. Observations in an older saved interview are still shown.
+- [x] **The summary is the reviewer's again.** This reverses decision 1 of the third round. The summary step asks for the reviewer's own description and the model only tidies it. An empty answer is refused there, so the model is never left to write the summary from the paper.
+- [ ] **The overview's claim map** is close to a summary of the paper. Whether it stays is not decided.
+- [ ] **The model words each point from a spoken answer.** The policy speaks of polishing a review the reviewer wrote. Whether dictated answers count as that is the reviewer's to judge for each venue.
+
 ## Still open
 
 - [ ] The second interview after the author response.
 - [ ] An anonymised export of a saved review that can be shared.
 - [ ] A remark filed from talk is not checked against the record word for word, as `said` is.
-- [ ] The summary is drafted by the faster model at low effort. Whether that is good enough for an objective summary is to be judged on the next paper; if not, it moves to the overview call, which already reads the whole paper.
 - [ ] The page has no test of its own in the suite. It was checked by driving it in headless Chrome through eleven scripted states.
 - [ ] A suggestion taken from the check cannot be undone with one click; the point has to be edited back.

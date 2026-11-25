@@ -218,9 +218,8 @@ def test_index_as_the_model_sees_it():
 @pytest.mark.parametrize(
     "kind,section,text,stage,head,step",
     [
-        # The summary has no questions: it is written from the paper as soon as the overview is left.
-        ("brief", "brief", "", "summary", "[Brief] no corrections", "outline · summary"),
-        ("brief", "brief", "claim 2 is wrong", "summary", "[Brief] claim 2 is wrong", "outline · summary"),
+        ("brief", "brief", "", "summary", "[Brief] no corrections", "ask · summary"),
+        ("brief", "brief", "claim 2 is wrong", "summary", "[Brief] claim 2 is wrong", "ask · summary"),
         # Free talk is filed where the interview stands, and a plan is asked for before a rewrite.
         ("talk", "brief", RAW, "brief", f"[Talk · brief]\n{RAW}", "file · brief"),
         ("talk", "weaknesses", "one more thing", "weaknesses", "[Talk · weaknesses]\none more thing", "file · weaknesses"),
@@ -314,10 +313,11 @@ def play_to_weaknesses(app):
     """
     app.script += [
         {"kind": "brief", "message": "Claim map: one claim."},
+        ask({"question": "Describe the paper in your own words.", "guide": "What it studies."}),
         outline(heard_as='"graph rag" = GraphRAG',
                 sentences=[{"text": "The paper studies cheap retrieval.", "job": "studies"},
                            {"text": "Results are very strong.", "job": "evaluation"}]),
-        outline(plan=[{"target": "2", "action": "cut", "because": "second paragraph"}],
+        outline(plan=[{"target": "2", "action": "cut", "because": "drop 2"}],
                 sentences=[{"text": "The paper studies cheap retrieval.", "job": "studies"}]),
         ask({"id": "S1", "question": "Is the lower cost a strength?", "notes": 'A3: "cheap!"',
              "paper": "Table 2 reports half the calls."}, entries=[S1]),
@@ -330,7 +330,8 @@ def play_to_weaknesses(app):
     stood = [where(app)]
     for payload in (
         {"text": "claim 2 is missing"},
-        {"action": "change", "text": RAW},
+        {"text": RAW},
+        {"action": "change", "text": "drop 2"},
         {"action": "accept", "text": "The paper studies cheap retrieval,  my way."},
         {"text": ""},
         {"text": "the cost one"},
@@ -345,7 +346,8 @@ def test_the_interview_follows_the_review_form(app):
     assert where(app) == ("new", None)
     assert play_to_weaknesses(app) == [
         ("brief", None),
-        ("summary", "outline"),  # written from the paper: there is nothing to ask
+        ("summary", "ask"),  # the reviewer describes the paper: the model does not summarise it
+        ("summary", "outline"),
         ("summary", "outline"),  # a revision is looked at again
         ("strengths", "ask"),
         ("strengths", "ask"),  # a follow-up question leaves the answer owed
@@ -361,8 +363,9 @@ def test_the_interview_follows_the_review_form(app):
     outlined = ("[Index]\nS1 (strength): Lower cost at similar accuracy\n"
                 f"  body: The method halves the number of calls.\n  where: Table 2\n{UNRANKED}")
     assert [c["prompt"] for c in app.calls[1:]] == [
-        "[Brief] claim 2 is missing\n\n[Index]\n(empty)\n\n[Next: outline · summary]",
-        f"[Change requested · summary]\n{RAW}\n\n[Summary as it stands]\n"
+        "[Brief] claim 2 is missing\n\n[Index]\n(empty)\n\n[Next: ask · summary]",
+        f"[Answer · summary]\n{RAW}\n\n[Index]\n(empty)\n\n[Next: outline · summary]",
+        "[Change requested · summary]\ndrop 2\n\n[Summary as it stands]\n"
         "The paper studies cheap retrieval. Results are very strong.\n\n[Index]\n(empty)\n\n[Next: revise · summary]",
         # The summary goes back as the reviewer left it, typed by hand.
         "[Accepted · summary]\nThe paper studies cheap retrieval,  my way.\n\n[Index]\n(empty)\n\n[Next: ask · strengths]",
@@ -373,6 +376,7 @@ def test_the_interview_follows_the_review_form(app):
     assert app.state["summary"] == "The paper studies cheap retrieval,  my way."
     assert [(t["role"], t["section"], t.get("kind") or t["fields"]["kind"]) for t in app.state["turns"]] == [
         ("claude", "brief", "brief"), ("reviewer", "brief", "brief"),
+        ("claude", "summary", "question"), ("reviewer", "summary", "answer"),
         ("claude", "summary", "outline"), ("reviewer", "summary", "change"),
         ("claude", "summary", "outline"), ("reviewer", "summary", "accept"),
         ("claude", "strengths", "question"), ("reviewer", "strengths", "answer"),
@@ -380,7 +384,7 @@ def test_the_interview_follows_the_review_form(app):
         ("claude", "strengths", "outline"), ("reviewer", "strengths", "accept"),
         ("claude", "weaknesses", "question"),
     ]
-    assert app.state["turns"][3] == {"role": "reviewer", "section": "summary", "kind": "change", "text": RAW}
+    assert app.state["turns"][3] == {"role": "reviewer", "section": "summary", "kind": "answer", "text": RAW}
     assert app.state["entries"] == [
         {"id": "S1", "kind": "strength", **{k: v for k, v in S1_OUTLINED.items() if k != "id"}},
         {"id": "W1", "kind": "weakness", "claim": "Single runs"},  # candidates are in the index as soon as they are put
@@ -401,7 +405,6 @@ def test_the_summary_follows_the_models_sentences_until_it_is_accepted(app):
 
 
 def test_a_model_reply_is_applied_to_the_index(app):
-    app.observations = True
     at(app, "weaknesses", "ask", [
         weakness("W1", "Single runs", body="Old body.", where="Table 2"),
         {"id": "C1", "kind": "comment", "claim": "Figure 2 is hard to read", "was": ["W4"]},
@@ -422,8 +425,7 @@ def test_a_model_reply_is_applied_to_the_index(app):
         {"id": "C2", "kind": "comment", "claim": "Clear", "was": ["S1"]},
         {"id": "W1", "kind": "weakness", "claim": "Single runs", "body": "New body.", "where": "Table 2", "resolve": "Report seeds."},
         {"id": "W10", "kind": "weakness", "claim": "No usable ID"},  # W4 is taken, by the entry that was W4
-        {"id": "O1", "kind": "observation", "claim": "An observation", "dropped": True},
-    ]
+    ]  # and O1, a point of the model's own, is not taken
     assert app.state["ranked"] is True  # weaknesses were ordered aloud
     assert [e["id"] for e in app.state["turns"][-1]["fields"]["entries"]] == ["W1", "W4", "W9", "W10", "S1", "O1"]
 
@@ -565,7 +567,7 @@ def test_session_survives_a_restart_of_the_server(app, tmp_path):
     play_to_weaknesses(app)
     again = InterviewApp(Path("foo.pdf"), tmp_path)
     assert again.restore() and not again.legacy
-    assert again.state == app.state and again.state["session_id"] == "sess-1" and len(again.state["turns"]) == 13
+    assert again.state == app.state and again.state["session_id"] == "sess-1" and len(again.state["turns"]) == 15
 
 
 def test_answer_is_on_disk_before_the_model_replies_and_can_be_retried(app, monkeypatch, tmp_path):
@@ -582,7 +584,7 @@ def test_answer_is_on_disk_before_the_model_replies_and_can_be_retried(app, monk
     # The failed call lost nothing: a new server finds the answer and knows it is unanswered.
     again = InterviewApp(Path("foo.pdf"), tmp_path)
     assert again.restore() and again.pending()
-    assert again.state["turns"][-1]["text"] == RAW and where(again) == ("summary", "outline")
+    assert again.state["turns"][-1]["text"] == RAW and where(again) == ("summary", "ask")
     assert again.view()["pending"] is True
     assert again.post("/api/reply", {"text": "again"})[0] == 400  # not a second answer: ask the model again
 
@@ -590,7 +592,7 @@ def test_answer_is_on_disk_before_the_model_replies_and_can_be_retried(app, monk
     assert again.post("/api/retry", {})[0] == 200
     assert not again.pending()
     assert [t["role"] for t in again.state["turns"]] == ["claude", "reviewer", "claude"]  # sent once, not twice
-    assert app.calls[-1]["prompt"] == f"[Brief] {RAW}\n\n[Index]\n(empty)\n\n[Next: outline · summary]"
+    assert app.calls[-1]["prompt"] == f"[Brief] {RAW}\n\n[Index]\n(empty)\n\n[Next: ask · summary]"
     again.ask_claude()  # nothing is owed now
     assert len(app.calls) == 2
 
@@ -612,7 +614,7 @@ def test_each_step_uses_its_own_model(app):
     app.script += [{"kind": "brief", "message": "b"}, ask({"question": "q"}), outline(), "- all met"]
     app.start()
     app.reply({"text": ""})
-    app.reply({"action": "change", "text": "shorter"})
+    app.reply({"text": "an answer"})
     app.state["stage"] = "draft"
     app.check()
     app.draft()
@@ -633,24 +635,22 @@ def test_models_can_be_overridden(tmp_path, monkeypatch):
     assert seen == [("m-deep", {"effort": "medium"}), ("m-fast", {})]
 
 
-def test_observations_are_off_unless_asked_for(app, tmp_path):
-    app.script += [{"kind": "brief", "message": "b"}] * 2
+def test_the_model_is_told_to_raise_no_points_of_its_own(app):
+    app.script.append({"kind": "brief", "message": "b"})
     app.start()
     prompt = app.calls[0]["prompt"]
-    assert "switched off for this session" in prompt and "do not create `O` entries" in prompt
-    assert interview_app.OBSERVATIONS_PLACEHOLDER not in prompt
-
-    (tmp_path / "on" / "extracted").mkdir(parents=True)
-    on = InterviewApp(Path("foo.pdf"), tmp_path / "on", observations=True)
-    on.extracted_path.write_text("PAPER TEXT", encoding="utf-8")
-    on.start()
-    assert "switched on for this session" in app.calls[-1]["prompt"] and "`O1`" in app.calls[-1]["prompt"]
-    assert "switched off" not in app.calls[-1]["prompt"]
+    assert "### No points of your own" in prompt and "do not create `O` entries" in prompt
+    assert "<observations setting>" not in prompt
+    assert "observations" not in app.state  # there is no setting to keep
 
 
-def test_addendum_has_exactly_one_place_for_the_observations_setting():
-    text = interview_app.APP_ADDENDUM.read_text(encoding="utf-8")
-    assert text.count(interview_app.OBSERVATIONS_PLACEHOLDER) == 1
+def test_there_is_no_way_to_switch_observations_on(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["interview", "--paper", "foo.pdf", "--observations"])
+    with pytest.raises(SystemExit):
+        interview_app.main()
+    assert "unrecognized arguments: --observations" in capsys.readouterr().err
+    with pytest.raises(TypeError):
+        InterviewApp(Path("foo.pdf"), Path("out"), observations=True)
 
 
 def test_saved_interview_refuses_a_pdf_whose_annotations_changed(app, tmp_path):
@@ -690,9 +690,9 @@ def test_record_holds_the_reviewers_words_byte_for_byte(app):
     app.script.append(outline(entries=[{"id": "W1", "said": "the cost one"}]))
     app.reply({"action": "skip"})  # nothing to add to the weaknesses
     record = app.answers_path.read_text(encoding="utf-8")
-    for said in ("claim 2 is missing", RAW, "The paper studies cheap retrieval,  my way.", "the cost one"):
+    for said in ("claim 2 is missing", RAW, "drop 2", "The paper studies cheap retrieval,  my way.", "the cost one"):
         assert said in record
-    assert f"Change requested: {RAW}\n" in record
+    assert f"Answer: {RAW}\n" in record
     assert "Scores" not in record  # scores are set in the review form, not here
 
 
@@ -710,11 +710,15 @@ Corrections from the reviewer: claim 2 is missing
 
 ## Summary
 
+Asked:
+1. Describe the paper in your own words.
+   Guide: What it studies.
+Answer: {RAW}
 Heard as: "graph rag" = GraphRAG
 Outlined: The paper studies cheap retrieval. Results are very strong.
-Change requested: {RAW}
+Change requested: drop 2
 Plan:
-- 2 cut: "second paragraph"
+- 2 cut: "drop 2"
 Outlined: The paper studies cheap retrieval.
 Accepted.
 
@@ -1158,21 +1162,28 @@ def test_model_is_called_without_settings_plugins_or_connectors(monkeypatch):
     assert "--strict-mcp-config" in cmd
 
 
-def test_an_observation_is_not_taken_while_observations_are_off(app):
+def test_an_observation_of_the_models_is_never_taken(app):
     """The prompt asks for none; one that arrives anyway does not reach the index."""
     reply = ask({"id": "W1", "question": "q"}, entries=[
         {"id": "W1", "claim": "The reviewer's own"},
         {"id": "O1", "claim": "The model's own", "body": "b", "where": "Table 2"},
     ])
-    at(app, "weaknesses", "ask", [])
-    app.script += [reply, reply]
+    # Not even in an interview that was started when observations could be switched on.
+    at(app, "weaknesses", "ask", [], observations=True)
+    app.script.append(reply)
     app.reply({"text": "x"})
     assert ids(app) == ["W1"]
 
-    # The setting is kept with the session: started with observations, it holds on a later run without the flag.
-    at(app, "weaknesses", "ask", [], turns=[], observations=True)
-    app.reply({"text": "x"})
-    assert ids(app) == ["W1", "O1"]
+
+def test_the_summary_is_not_written_without_the_reviewers_description(app):
+    """Elsewhere an empty answer leaves the wording to the model. A model may not summarise the paper."""
+    at(app, "summary", "ask")
+    assert app.post("/api/reply", {"text": "  "}) == (
+        400, {"error": "Describe the paper in your own words first. The summary is yours to give."})
+    assert app.calls == [] and app.state["turns"] == [] and app.state["summary"] == ""
+    app.script.append(ask({"question": "Strengths?"}))
+    app.reply({"action": "skip"})  # the reviewer may still leave the summary for the form
+    assert where(app) == ("strengths", "ask") and app.state["summary"] == ""
 
 
 def test_the_server_refuses_a_request_from_another_site(app):

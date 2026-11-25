@@ -30,7 +30,7 @@ The interview follows the review form, one section at a time, and ends with the 
 
 | Section | What Claude asks | What is settled |
 |---|---|---|
-| 1. Summary | Nothing: Claude writes the paragraph from the paper's abstract, contributions, introduction and conclusion, and the reviewer directs the shaping | The summary paragraph |
+| 1. Summary | The reviewer's description of the paper, in their own words | The summary paragraph |
 | 2. Strengths | Each positive remark in the notes; anything else that argues for acceptance | The strengths |
 | 3. Weaknesses | Each concern in the notes, related ones merged; the parts of the paper with no notes | The weaknesses |
 | 4. Comments | Everything left in the notes: questions, suggestions, minor issues, typos | The comments |
@@ -45,7 +45,7 @@ Each section runs the same way:
 
 Two things the register calls for are part of the sections for every paper: the case for acceptance (B15) in the strengths, and the parts with no notes (B3) in the weaknesses. They are not asked again in the bias test.
 
-The summary is the one section a model drafts: it is a description of the paper, taken from the paper, and holds no judgement. A venue may not allow even that. If yours does not, write the summary yourself in the box.
+The summary is the reviewer's own description of the paper. Claude does not summarise the paper: it words the paragraph from what the reviewer said and leaves out what they did not say.
 
 ### Rules for questions
 
@@ -56,7 +56,7 @@ The summary is the one section a model drafts: it is a description of the paper,
 - **One challenge per point.** If the reviewer gives a reason, record it and move on.
 - **No questions about scores.** Scores, confidence and the recommendation are the reviewer's. The register's entries about them (B4, B14, B16) are not asked.
 - **Short answers are fine.** So are "skip", "drop it" and "you decide the wording".
-- **Claude's own observations** are offered separately from the questions and labelled as Claude's. The reviewer accepts or drops each.
+- **No points from Claude.** Claude does not offer a strength, a weakness, a comment or a question for the authors that the reviewer did not raise.
 
 ### What each section settles
 

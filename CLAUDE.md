@@ -44,7 +44,7 @@ An older second use, a prompt for a personal reading note with BibTeX (`uv run p
 
 **Talk never moves the interview on.** The reviewer can say anything at any step. It is stored as sent and filed onto points; a filed reply or a plan cannot write or change text, and the server enforces that, not the prompt. Only a button ends a step.
 
-**The summary is the one section drafted from the paper.** It describes and does not judge, so the model writes it from the abstract, contributions, introduction and conclusion, and the reviewer shapes it. Every strength, weakness and comment still comes from the reviewer.
+**The model never summarises the paper and raises no points of its own.** The summary is the reviewer's description in their own words, which the model only tidies. Every strength, weakness, comment and question for the authors comes from the reviewer. There is no setting that lets the model offer one. This keeps Debrief inside ICML 2026's Policy B ([docs/review-interview.md](docs/review-interview.md#icml)); do not add a feature that crosses it.
 
 **A fact from the paper is not an opinion.** Where the paper states something that cuts against a point, the model puts that fact on the point with its location. It stays until the reviewer rewords the point or says it stands.
 

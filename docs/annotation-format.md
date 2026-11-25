@@ -16,15 +16,15 @@ Extraction writes two files per paper:
 ```
 --- Page 4 ---
 
-[FIGURE 2: "Overview of the training framework."]
-[NOTE A31 left yellow: "Hard to read, which block do I start with?"]
+[FIGURE 2: "The router and its two stages."]
+[NOTE A31 left yellow: "Which box is the input?"]
 
-#### 3.3.2 Graph-based Candidate Tool Expansion
+#### 3.2.1 Routing Score
 
-⟨L258–267⟩ Candidate admission filters the proposed tools before [HIGHLIGHT yellow: "budgeted selection."] Initial candidates always pass admission.
-[NOTE A35 right yellow @L267: "Equation 6 is unnecessarily complex."]
+⟨L258–267⟩ The router scores each tool against the query before [HIGHLIGHT yellow: "the final ranking."] Tools below the threshold are dropped.
+[NOTE A35 right yellow @L267: "Is the threshold tuned on the test set?"]
 
-⟨L268⟩ [EQUATION 6: "ωℓ(s, t) ≥τℓ ∨ ( ℓ= co ∧ b(s, q) ≥τseed ) , (6)"]
+⟨L268⟩ [EQUATION 6: "s(q, t) = cos(e_q, e_t) ≥ τ , (6)"]
 ```
 
 ## Markers

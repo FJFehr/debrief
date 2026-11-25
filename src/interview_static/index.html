@@ -590,7 +590,7 @@ function nowCards(step) {
     return q + (asked && last !== asked[0] && (f.plan || []).length ? `<div class="card claude">${changes(f)}${filed(f)}</div>` : "") + extra;
   }
   const kind = SECTION_KIND[step];
-  if (step === "summary") return `<div class="card claude"><div class="head"><b>Summary</b><span>written from the paper's own account of itself</span><span id="wc"></span></div>
+  if (step === "summary") return `<div class="card claude"><div class="head"><b>Summary</b><span>worded from your own description</span><span id="wc"></span></div>
     <textarea id="para"></textarea><div id="sents" class="hint"></div>${changes(f)}${filed(f)}</div>` + extra;
   if (kind) return `<div class="card claude"><div class="head"><b>${STEP_NAME[step]} as they stand</b><span>click one to edit it</span></div>
     ${[...live(kind), ...(step === "weaknesses" ? live("observation") : [])].map((e) => bulletRow(e.id)).join("") || `<span class="hint">None.</span>`}
@@ -877,7 +877,8 @@ function drawComposer() {
     const fm = view.paper.front_matter;
     const front = step === "summary" ? `<details class="front"><summary>From the paper: abstract, contributions, conclusion</summary>
       <h5>Abstract</h5><p>${esc(fm.abstract)}</p><h5>Contributions</h5><p>${esc(fm.contributions)}</p><h5>Conclusion</h5><p>${esc(fm.conclusion)}</p></details>` : "";
-    c.innerHTML = err + front + candidates() + sayBox("Your answer, in your words. A thought about something else can be filed without answering.",
+    c.innerHTML = err + front + candidates() + sayBox(step === "summary" ? "Describe the paper in your own words: what it studies, how the method works, what it is evaluated on, the main finding. It is only tidied, never written for you."
+      : "Your answer, in your words. A thought about something else can be filed without answering.",
       `<button class="small" id="skipBtn">Skip this section</button><button id="fileBtn">File a thought</button><button class="primary" id="sendBtn">Send answer</button>`);
     $("fileBtn").onclick = talk;
     $("sendBtn").onclick = () => reply({text: unsent});

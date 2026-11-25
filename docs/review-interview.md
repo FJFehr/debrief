@@ -2,7 +2,7 @@
 
 How an annotated PDF becomes a review. For the short version, see the quick start in the [README](../README.md).
 
-ARR does not let a generative model write the first draft of a review. Here the first draft of every judgement is what you say in the interview. The model words the strengths, weaknesses and comments from your answers, you accept or change them, and the app puts the review together from the sections you accepted. There is one exception: the summary, which describes the paper and judges nothing, is drafted by the model from the paper itself and shaped by you. Whether this, and the model you use, fit your venue's rules is for you to check before a real review: see [Model and privacy](#model-and-privacy).
+ARR does not let a generative model write the first draft of a review. Here the first draft of every judgement is what you say in the interview. The model words the strengths, weaknesses and comments from your answers, you accept or change them, and the app puts the review together from the sections you accepted. The summary is no exception: you describe the paper in your own words and the model only tidies what you said. The model never summarises the paper and never raises a point of its own. Whether this, and the model you use, fit your venue's rules is for you to check before a real review: see [Model and privacy](#model-and-privacy).
 
 Debrief is not a language model reviewing for you. We do not condone using a language model to come up with the points of a review, or to decide whether a paper is accepted or rejected.
 
@@ -16,7 +16,6 @@ uv run interview --paper reviews/<name>.pdf
 |---|---|
 | `--paper` | Path to the annotated PDF |
 | `--restart` | Start again. The saved interview and record are kept once, as `.bak` files |
-| `--observations` | Let Claude offer up to three points of its own in the weaknesses section, as `O1`, `O2`, … You make each one a weakness or a comment, or drop it (off by default). Not for venues that require you to write the content of the review yourself, such as ARR |
 | `--model`, `--effort` | Model and thinking effort for every turn of the interview after the overview (default: Opus 5.5, low) |
 | `--deep-model`, `--deep-effort` | Model and thinking effort for the overview and the check (default: Fable 5.2, its own default effort) |
 | `--no-auto-check` | Do not start the check by itself when the bias test is accepted |
@@ -36,7 +35,7 @@ The page has three columns:
 
 Click an entry in the index, or its ID anywhere in a message, to open it. Hovering over a note's badge or ID shows the note at once in a large card in the note's own colour; hovering over a point's ID shows its claim the same way. An open entry shows its text as it will appear in the review, and you edit that text directly. Once you have, it is your wording: a later revision by the model does not replace it unless you ask for a change to that entry. Under the text are the notes it rests on, each with the words of the paper it is attached to. The parts the text was first built from (its label in the index, its location, its fix) are folded under "Parts". You can also move the entry to another kind (a weakness to a comment, say), drop or restore it, and move it up or down in the order of severity (the arrows on an index row do the same). None of that needs the model. At any point after the overview you can instead say what to change and let the model revise it.
 
-Colour tells you whose a thing is. Teal marks what is yours: your answers, the step you are on, links and the main button. Gold marks a point Claude raised itself, until you adopt or drop it. Brick marks what is still open, and errors. The page of the paper and your highlights keep their own colours. The button at the top right switches between light and dark; the page starts from your system setting and remembers your choice.
+Colour tells you whose a thing is. Teal marks what is yours: your answers, the step you are on, links and the main button. Brick marks what is still open, and errors. The page of the paper and your highlights keep their own colours. The button at the top right switches between light and dark; the page starts from your system setting and remembers your choice.
 
 ### Talking, and planning before a rewrite
 
@@ -62,7 +61,7 @@ flowchart TD
 
     subgraph INT["2 · Interview"]
         B["Overview<br/>notes sorted, what the paper<br/>answers, then you talk it through"]:::tool
-        SUM["Summary<br/>drafted from the paper,<br/>shaped by you"]:::you
+        SUM["Summary<br/>your description of the paper,<br/>tidied"]:::you
         STR["Strengths<br/>each one: keep or drop"]:::you
         WEAK["Weaknesses<br/>each one: weakness,<br/>comment or drop"]:::you
         COM["Comments<br/>questions, suggestions,<br/>minor issues and typos"]:::you
@@ -101,7 +100,7 @@ Yellow is you, blue is Debrief, grey is a file. Rounded boxes start and end the 
 1. **Extraction** turns the PDF into text with the annotations in place (see [annotation-format.md](annotation-format.md)), plus the positions the page needs for its links.
 2. **Interview.** It follows the review form, by the process in [reviewing/INTERVIEW.md](../reviewing/INTERVIEW.md): an overview, one section for each part of the review, then the bias test. The server writes the record, so everything you say is stored exactly as sent.
    - **Overview.** The model reads the paper against your notes and reports: how it sorted your notes, what the paper already answers, the parts without notes, and the paper's claims. Then you talk the paper through, as much or as little as you like, and go on.
-   - **Summary.** It has no questions. The model drafts the paragraph from the paper's own account of itself: the abstract, the contributions, the introduction and the conclusion. Five or six plain sentences, in the paper's terms, with no judgement. You shape it: edit it, say what to change, or plan it first. It is shown one numbered sentence to a line while you do.
+   - **Summary.** You describe the paper in your own words: what it studies, how the method works, what it is evaluated on, the main finding. The model does not summarise the paper. It tidies your description into five or six plain sentences and leaves out what you did not say; an empty answer is not accepted here. The paper's abstract, contributions and conclusion are folded above the box for you to read. Then you shape the paragraph: edit it, say what to change, or plan it first. It is shown one numbered sentence to a line while you do.
    - **Strengths.** Each positive remark in your notes is a candidate, to keep or drop. You add anything else that argues for acceptance.
    - **Weaknesses.** Each concern in your notes is a candidate, related notes merged, at most five. You make each one a weakness or a comment, or drop it. One more question covers the parts of the paper without notes.
    - **Comments.** Everything left in your notes: questions, suggestions, minor issues and typos. You confirm the list, move or drop items, and add what is missing. They go into the review as one list, in the order you set.
@@ -191,7 +190,22 @@ Two settings are used. The steps that need analysis and happen once run on Fable
 A submission under review is confidential. Debrief sends all of it to a language model, so using it is only acceptable where both of these hold.
 
 - 🔒 **The tool is privacy-preserving.** The ACL policy describes such a tool as one that does not store what you send, and a non-privacy-preserving one as a tool that stores input data, typically on a third party's servers. A reviewer may not put a submission, any part of it, or the review itself into a non-privacy-preserving tool. Whether your model account qualifies depends on its data terms, not on Debrief. Check them.
-- 📜 **The use is one your venue approves.** ARR requires that you read the paper fully and write the content and argument of the review yourself, and does not permit generative assistance for the first draft. Paraphrasing your own review is given as a reasonable use. Debrief is built so that every judgement comes from your notes and answers, but the model also reads the paper, prepares an overview and drafts the summary paragraph from the paper, which is more than a language edit. The summary describes and does not judge, but it is text a model wrote first. If your venue does not allow that, write the summary yourself in its box; if you are not sure about the rest, ask the chairs or do not use it.
+- 📜 **The use is one your venue approves.** ARR requires that you read the paper fully and write the content and argument of the review yourself, and does not permit generative assistance for the first draft. Paraphrasing your own review is given as a reasonable use. Debrief is built so that every judgement comes from your notes and answers, but the model also reads the paper, prepares an overview and words each section from what you said, which is more than a language edit. If you are not sure your venue allows that, ask the chairs or do not use it.
+
+### ICML
+
+ICML 2026 assigns each reviewer one of two policies ([LLM policy](https://icml.cc/Conferences/2026/LLM-Policy), as read in November 2026). You are told which one applies to you, and preferring B does not guarantee it.
+
+- 🚫 **Policy A** allows no language model at any stage of reviewing. Do not use Debrief.
+- ⚖️ **Policy B** allows a privacy-compliant model to help you understand the paper and to polish your review. It does not allow asking a model to summarise the paper, to assess it, to find its strengths or weaknesses, to suggest key points, an outline or questions for the authors, or to write the review.
+
+Debrief is built to stay inside Policy B, and three things in it follow from that:
+
+- 📝 **The summary is yours.** You describe the paper; the model tidies your words and adds nothing from the paper.
+- 🙅 **No points from the model.** There is no setting that lets it offer a strength, a weakness, a comment or a question.
+- 🔢 **Scores never pass through it.**
+
+Two parts are not settled by the policy's wording, and are yours to judge. The overview lists the paper's claims, which is close to a summary. And the model writes the text of each point from your spoken answer, where the policy speaks of polishing a review you wrote. The policy's own example has the reviewer form the strengths, weaknesses and judgement away from the model and use it to polish afterwards.
 
 The rules are in the [ARR reviewer guidelines](https://aclrollingreview.org/reviewerguidelines) and the [ACL Policy on Publication Ethics](https://www.aclweb.org/adminwiki/index.php/ACL_Policy_on_Publication_Ethics), as read in November 2026. Read them yourself: they change, and other venues differ.
 

@@ -56,22 +56,6 @@ SYSTEM_PROMPT = (
     "Follow the instructions given in the conversation. You have no tools in this session."
 )
 
-OBSERVATIONS_PLACEHOLDER = "<observations setting>"
-OBSERVATIONS = {
-    False: (
-        "**Observations of your own are switched off for this session.** Do not offer points that "
-        "the reviewer's notes did not raise, and do not create `O` entries. If you saw something "
-        "the reviewer would plainly want to know, such as a note that the paper contradicts, it "
-        "belongs in the facts you give under the reviewer's own point."
-    ),
-    True: (
-        "**Observations of your own are switched on for this session.** In the weaknesses ask, "
-        "offer at most three points that the reviewer's notes did not raise, as entries `O1`, "
-        "`O2`, …: a claim, a body of one or two sentences, and its location in `where`. They are "
-        "labelled as yours. The reviewer makes each one a weakness or a comment, or drops it."
-    ),
-}
-
 # Which model does which step. Reading the paper against the notes and checking
 # the review need real analysis and happen once each, so they get the strongest
 # model. Interview turns follow a fixed format and are waited on ten or more
@@ -492,8 +476,6 @@ def model_message(turn: dict, state: dict) -> str:
         if kind in ("change", "plan", "apply") and (turn["section"] == "summary" or after):  # hand edits included
             head += f"\n\n[Summary as it stands]\n{state['summary']}"
     step = NEXT_STEP.get(kind, "ask")
-    if step == "ask" and state["stage"] == "summary":
-        step = "outline"  # the summary has no questions: it is written from the paper
     index = index_text(state["entries"], state["ranked"])
     return f"{head}\n\n{index}\n\n[Next: {step} · {named(state['stage'])}]"
 
@@ -659,14 +641,12 @@ class InterviewApp:
         venue: str = "arr",
         fast: dict | None = None,
         deep: dict | None = None,
-        observations: bool = False,
         auto_check: bool = False,
     ):
         self.pdf_path = pdf_path
         self.venue = venue
         self.fast = fast or dict(FAST)  # the turns of the interview
         self.deep = deep or dict(DEEP)  # the brief and the check
-        self.observations = observations  # whether the model may offer points of its own
         self.auto_check = auto_check  # whether the check starts by itself after the bias test
         self.model_lock = threading.Lock()  # one call to the model at a time: they share a conversation
         self.checker: threading.Thread | None = None  # the check, when it runs beside the page
@@ -826,10 +806,9 @@ class InterviewApp:
                 else:
                     kind = SECTION_KIND.get(state["stage"], "comment")
                     proposal["id"] = next_id(entries, kind)
-                # Switched off means off: the prompt asks for no points of the model's own, and
-                # one that arrives anyway is not taken. (A session saved before the setting was
-                # stored goes by the flag of this run.)
-                if kind == "observation" and not state.get("observations", self.observations):
+                # The model raises no points of its own: the prompt asks for none, and one that
+                # arrives anyway is not taken. (Observations in an older saved interview stay.)
+                if kind == "observation":
                     continue
                 entry = {"id": proposal["id"], "kind": kind}
                 entries.append(entry)
@@ -873,9 +852,7 @@ class InterviewApp:
             return
         paper_text = self.extracted_path.read_text(encoding="utf-8")
         prompt = load_interview_prompt(paper_text, self.venue, self.answers_path)
-        addendum = APP_ADDENDUM.read_text(encoding="utf-8")
-        prompt += "\n" + addendum.replace(OBSERVATIONS_PLACEHOLDER, OBSERVATIONS[self.observations])
-        self.state["observations"] = self.observations  # kept with the session: it is set once, here
+        prompt += "\n" + APP_ADDENDUM.read_text(encoding="utf-8")
         self._model_turn(prompt, self.deep, "brief")  # the brief is where the paper gets read
         self.state.update(stage="brief", annotations=self.fingerprint)
         self.save()
@@ -898,6 +875,10 @@ class InterviewApp:
                 raise Refused("Say something to file.")
         elif phase == "ask" and action in ("", "skip"):
             kind = "skip" if action else "answer"
+            if kind == "answer" and stage == "summary" and not text.strip():
+                # Elsewhere an empty answer leaves the wording to the model. Not here: a model
+                # may not summarise the paper, so there is nothing for it to word.
+                raise Refused("Describe the paper in your own words first. The summary is yours to give.")
         elif phase == "outline" and action == "accept":
             kind = "accept"
             self._gate(stage, force=payload.get("force") is True)
@@ -927,8 +908,7 @@ class InterviewApp:
         state["turns"].append({"role": "reviewer", "section": stage, "kind": kind, "text": text})
         if kind in ("brief", "accept", "skip"):  # the section is done: on to the next
             state["stage"] = STAGES[STAGES.index(stage) + 1]
-            # The summary opens with its paragraph, written from the paper: it has no questions.
-            state["phase"] = "outline" if state["stage"] == "summary" else "ask" if state["stage"] in SECTIONS else None
+            state["phase"] = "ask" if state["stage"] in SECTIONS else None
         self.save()  # the reviewer's words are on disk before the model is asked
         if kind == "accept" and state["stage"] == "draft" and self.auto_check:
             self.check_later()
@@ -1403,11 +1383,6 @@ def main() -> None:
     )
     parser.add_argument("--restart", action="store_true", help="Discard the saved interview")
     parser.add_argument(
-        "--observations",
-        action="store_true",
-        help="Let Claude offer up to three points of its own (off by default; set when an interview starts)",
-    )
-    parser.add_argument(
         "--no-auto-check",
         action="store_true",
         help="Do not start the check against the guidelines by itself after the bias test",
@@ -1446,7 +1421,6 @@ def main() -> None:
         Path(args.output_dir),
         fast=tier(args.model, args.effort),
         deep=tier(args.deep_model, args.deep_effort),
-        observations=args.observations,
         auto_check=not args.no_auto_check,
     )
     print(f"Models: interview turns on {app.fast['model']} ({app.fast['effort'] or 'default'} effort); "
